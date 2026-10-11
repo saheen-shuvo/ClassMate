@@ -1,8 +1,9 @@
+/* eslint-disable react/no-unescaped-entities */
 "use client";
 
 import { useState } from "react";
 import Link from "next/link";
-import { FiEye, FiEyeOff, FiArrowRight } from "react-icons/fi";
+import { FiBookOpen, FiEye, FiEyeOff, FiArrowRight } from "react-icons/fi";
 
 export default function Login() {
   const [showPassword, setShowPassword] = useState(false);

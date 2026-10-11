@@ -1,4 +1,3 @@
-
 import Link from "next/link";
 import {
   FiBookOpen,
@@ -7,8 +6,9 @@ import {
   FiBell,
   FiMail,
   FiArrowUpRight,
-  FiHeart,
 } from "react-icons/fi";
+import logo from "../../../public/logo.png";
+import Image from "next/image";
 
 export default function Footer() {
   const currentYear = new Date().getFullYear();
@@ -51,24 +51,27 @@ export default function Footer() {
         <div className="grid grid-cols-1 gap-10 sm:grid-cols-2 lg:grid-cols-4 lg:gap-12">
           {/* Brand */}
           <div>
-            <Link
-              href="/"
-              className="inline-flex items-center gap-2"
-              aria-label="ClassMate home"
-            >
-              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-600 text-xl font-bold text-white shadow-sm">
-                C
-              </span>
+          <Link
+            href="/"
+            className="flex shrink-0 items-center gap-2"
+          >
+            <Image
+              src={logo}
+              alt="ClassMate"
+              width={36}
+              height={36}
+              priority
+            />
 
-              <span className="text-2xl font-bold tracking-tight text-slate-900">
-                Class<span className="text-indigo-600">Mate</span>
-              </span>
-            </Link>
+            <span className="text-xl font-bold tracking-tight text-slate-900">
+              Class<span className="text-indigo-600">Mate</span>
+            </span>
+          </Link>
 
             <p className="mt-5 max-w-xs text-sm leading-7 text-slate-500">
-              Learn together, share knowledge, and find the right
-              teammates. ClassMate brings your university learning
-              community into one place.
+              Learn together, share knowledge, and find the right teammates.
+              ClassMate brings your university learning community into one
+              place.
             </p>
 
             <Link
@@ -135,8 +138,8 @@ export default function Footer() {
             </h3>
 
             <p className="mt-5 text-sm leading-7 text-slate-500">
-              Have a suggestion, found an issue, or want to improve
-              the ClassMate community? We would love to hear from you.
+              Have a suggestion, found an issue, or want to improve the
+              ClassMate community? We would love to hear from you.
             </p>
 
             <a
