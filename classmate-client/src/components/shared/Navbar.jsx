@@ -1,12 +1,14 @@
-/* eslint-disable react-hooks/set-state-in-effect */
 
 "use client";
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import logo from "../../../public/logo.png";
 import { usePathname, useRouter } from "next/navigation";
+import Swal from "sweetalert2";
+
+import logo from "../../../public/logo.png";
+
 import {
   FiBookOpen,
   FiFileText,
@@ -22,29 +24,45 @@ import {
   FiLayout,
 } from "react-icons/fi";
 
-// Pass the authenticated user and logout function from your auth system.
-export default function Navbar({ user = null, onLogout }) {
+export default function Navbar({ user: initialUser = null, onLogout }) {
   const pathname = usePathname();
   const router = useRouter();
 
+  const [user, setUser] = useState(initialUser);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+
   const userMenuRef = useRef(null);
 
   const role = user?.role?.toLowerCase();
 
+  // Role-specific dashboard routes.
   const dashboardPath = {
     student: "/dashboard/student",
     cr: "/dashboard/cr",
+    faculty: "/dashboard/faculty",
     admin: "/dashboard/admin",
   };
 
   const dashboardHref = dashboardPath[role] || "/dashboard";
 
+  // General navigation links.
   const navItems = [
-    { label: "Home", href: "/", icon: FiLayout },
-    { label: "Courses", href: "/courses", icon: FiBookOpen },
-    { label: "Notes", href: "/notes", icon: FiFileText },
+    {
+      label: "Home",
+      href: "/",
+      icon: FiLayout,
+    },
+    {
+      label: "Courses",
+      href: "/courses",
+      icon: FiBookOpen,
+    },
+    {
+      label: "Notes",
+      href: "/notes",
+      icon: FiFileText,
+    },
     {
       label: "Presentations",
       href: "/presentation-topics",
@@ -63,8 +81,10 @@ export default function Navbar({ user = null, onLogout }) {
     },
   ];
 
+  // Links visible according to the logged-in user's role.
   const roleItems = {
     student: [],
+
     cr: [
       {
         label: "Manage Courses",
@@ -79,6 +99,18 @@ export default function Navbar({ user = null, onLogout }) {
         href: "/dashboard/cr/announcements",
       },
     ],
+
+    faculty: [
+      {
+        label: "Manage Courses",
+        href: "/dashboard/faculty/courses",
+      },
+      {
+        label: "Manage Announcements",
+        href: "/dashboard/faculty/announcements",
+      },
+    ],
+
     admin: [
       {
         label: "Manage Students",
@@ -95,20 +127,53 @@ export default function Navbar({ user = null, onLogout }) {
     ],
   };
 
-  const isActive = (href) => {
-    if (href === "/") return pathname === "/";
-    return pathname === href || pathname.startsWith(`${href}/`);
-  };
+  // Read the current demo login from localStorage.
+  const syncUser = () => {
+    const isLoggedIn = localStorage.getItem("isLoggedIn") === "true";
+    const storedRole = localStorage.getItem("userRole");
+    const email = localStorage.getItem("userEmail");
 
-  const closeMenus = () => {
-    setMobileOpen(false);
-    setUserMenuOpen(false);
+    if (!isLoggedIn || !storedRole || !email) {
+      setUser(null);
+      return;
+    }
+
+    const roleNames = {
+      cr: "Class Representative",
+      student: "Student",
+      faculty: "Faculty",
+      admin: "Admin",
+    };
+
+    setUser({
+      role: storedRole,
+      email,
+      userName: roleNames[storedRole] || "User",
+    });
   };
 
   useEffect(() => {
-    closeMenus();
+    syncUser();
+
+    // Listen for login/logout changes within this tab.
+    window.addEventListener("auth-change", syncUser);
+
+    // Also listen for localStorage changes from another tab.
+    window.addEventListener("storage", syncUser);
+
+    return () => {
+      window.removeEventListener("auth-change", syncUser);
+      window.removeEventListener("storage", syncUser);
+    };
+  }, []);
+
+  // Close menus when navigating to another page.
+  useEffect(() => {
+    setMobileOpen(false);
+    setUserMenuOpen(false);
   }, [pathname]);
 
+  // Close the account menu on outside click or Escape.
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (
@@ -120,7 +185,10 @@ export default function Navbar({ user = null, onLogout }) {
     };
 
     const handleEscape = (event) => {
-      if (event.key === "Escape") closeMenus();
+      if (event.key === "Escape") {
+        setMobileOpen(false);
+        setUserMenuOpen(false);
+      }
     };
 
     document.addEventListener("mousedown", handleClickOutside);
@@ -132,17 +200,17 @@ export default function Navbar({ user = null, onLogout }) {
     };
   }, []);
 
-  const handleLogout = async () => {
-    try {
-      if (onLogout) {
-        await onLogout();
-      }
+  const closeMenus = () => {
+    setMobileOpen(false);
+    setUserMenuOpen(false);
+  };
 
-      closeMenus();
-      router.push("/login");
-    } catch (error) {
-      console.error("Logout failed:", error);
+  const isActive = (href) => {
+    if (href === "/") {
+      return pathname === "/";
     }
+
+    return pathname === href || pathname.startsWith(`${href}/`);
   };
 
   const linkClass = (href) =>
@@ -152,9 +220,72 @@ export default function Navbar({ user = null, onLogout }) {
         : "text-slate-600 hover:bg-slate-50 hover:text-indigo-700"
     }`;
 
+  // Show only links available to the current account.
   const visibleItems = navItems.filter(
-    (item) => !item.protected || user
+    (item) => !item.protected || Boolean(user)
   );
+
+  // Logout.
+  const handleLogout = async () => {
+    const result = await Swal.fire({
+      icon: "question",
+      title: "Log out?",
+      text: "Are you sure you want to log out of ClassMate?",
+      showCancelButton: true,
+      confirmButtonText: "Yes, log out",
+      cancelButtonText: "Cancel",
+      confirmButtonColor: "#dc2626",
+      cancelButtonColor: "#64748b",
+      reverseButtons: true,
+    });
+
+    if (!result.isConfirmed) {
+      return;
+    }
+
+    try {
+      // Call an existing authentication logout handler if provided.
+      if (onLogout) {
+        await onLogout();
+      }
+
+      // Clear the demo login.
+      localStorage.removeItem("userRole");
+      localStorage.removeItem("userEmail");
+      localStorage.removeItem("isLoggedIn");
+
+      setUser(null);
+      closeMenus();
+
+      // Synchronize other components in this tab.
+      window.dispatchEvent(new Event("auth-change"));
+
+      await Swal.fire({
+        icon: "success",
+        title: "Logged out!",
+        text: "You have successfully logged out.",
+        confirmButtonColor: "#4f46e5",
+        timer: 1500,
+        timerProgressBar: true,
+        showConfirmButton: false,
+      });
+
+      router.push("/login");
+      router.refresh();
+    } catch (error) {
+      console.error("Logout failed:", error);
+
+      Swal.fire({
+        icon: "error",
+        title: "Logout failed",
+        text: "Please try again.",
+        confirmButtonColor: "#4f46e5",
+      });
+    }
+  };
+
+  const displayName =
+    user?.userName || user?.name || "My Account";
 
   return (
     <nav className="sticky top-0 z-50 border-b border-slate-200 bg-white/95 backdrop-blur-md">
@@ -206,25 +337,26 @@ export default function Navbar({ user = null, onLogout }) {
               <div className="relative" ref={userMenuRef}>
                 <button
                   type="button"
-                  onClick={() => setUserMenuOpen((prev) => !prev)}
+                  onClick={() =>
+                    setUserMenuOpen((prev) => !prev)
+                  }
                   aria-expanded={userMenuOpen}
                   aria-haspopup="menu"
                   aria-label="Open account menu"
                   className="flex items-center gap-2 rounded-full border border-slate-200 p-1.5 pr-3 transition hover:bg-slate-50"
                 >
                   <span className="flex h-8 w-8 items-center justify-center rounded-full bg-indigo-100 font-semibold text-indigo-700">
-                    {(user.userName || user.name || "U")
-                      .charAt(0)
-                      .toUpperCase()}
+                    {displayName.charAt(0).toUpperCase()}
                   </span>
 
                   <span className="hidden max-w-24 truncate text-sm font-medium text-slate-700 sm:block">
-                    {user.userName || user.name || "My Account"}
+                    {displayName}
                   </span>
 
                   <FiChevronDown size={16} />
                 </button>
 
+                {/* Account dropdown */}
                 {userMenuOpen && (
                   <div
                     role="menu"
@@ -232,7 +364,7 @@ export default function Navbar({ user = null, onLogout }) {
                   >
                     <div className="border-b border-slate-100 px-3 py-3">
                       <p className="truncate text-sm font-semibold text-slate-900">
-                        {user.userName || user.name || "User"}
+                        {displayName}
                       </p>
 
                       <p className="truncate text-xs text-slate-500">
@@ -240,7 +372,9 @@ export default function Navbar({ user = null, onLogout }) {
                       </p>
 
                       <span className="mt-2 inline-block rounded-full bg-indigo-50 px-2 py-1 text-xs capitalize text-indigo-700">
-                        {role || "Member"}
+                        {role === "cr"
+                          ? "Class Representative"
+                          : role || "Member"}
                       </span>
                     </div>
 
@@ -277,6 +411,8 @@ export default function Navbar({ user = null, onLogout }) {
                       </Link>
                     ))}
 
+                    <div className="my-1 border-t border-slate-100" />
+
                     <button
                       type="button"
                       role="menuitem"
@@ -307,7 +443,7 @@ export default function Navbar({ user = null, onLogout }) {
               </div>
             )}
 
-            {/* Mobile menu button */}
+            {/* Mobile menu toggle */}
             <button
               type="button"
               onClick={() => setMobileOpen((prev) => !prev)}
@@ -351,6 +487,23 @@ export default function Navbar({ user = null, onLogout }) {
                 <>
                   <div className="my-2 border-t border-slate-200" />
 
+                  {/* Mobile account information */}
+                  <div className="px-3 py-2">
+                    <p className="text-sm font-semibold text-slate-900">
+                      {displayName}
+                    </p>
+
+                    <p className="truncate text-xs text-slate-500">
+                      {user.email}
+                    </p>
+
+                    <span className="mt-2 inline-block rounded-full bg-indigo-50 px-2 py-1 text-xs capitalize text-indigo-700">
+                      {role === "cr"
+                        ? "Class Representative"
+                        : role}
+                    </span>
+                  </div>
+
                   <Link
                     href={dashboardHref}
                     onClick={closeMenus}
@@ -391,7 +544,7 @@ export default function Navbar({ user = null, onLogout }) {
                   </button>
                 </>
               ) : (
-                <div className="mt-3 grid grid-cols-2 gap-2 border-t border-slate-200 pt-4 sm:hidden">
+                <div className="mt-3 grid grid-cols-2 gap-2 border-t border-slate-200 pt-4">
                   <Link
                     href="/login"
                     onClick={closeMenus}
