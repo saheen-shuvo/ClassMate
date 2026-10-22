@@ -3,9 +3,9 @@ import Navbar from "../components/shared/Navbar.jsx";
 import Footer from "@/components/shared/Footer";
 
 export const metadata = {
-  title: "Barakah | Islamic Wall Clock & Canvas",
+  title: "ClassMate - Your University, Connected",
   description:
-    "Shop premium Islamic wall clocks and canvas art. Elegant designs for your home. Developed by Saheen Alam Shuvo.",
+    "ClassMate is a shared space for students to exchange study materials, discover presentation topics, stay informed, and find the right teammates for academic projects.",
 };
 
 export default function RootLayout({ children }) {

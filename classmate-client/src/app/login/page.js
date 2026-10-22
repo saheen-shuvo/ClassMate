@@ -107,10 +107,6 @@ export default function Login() {
       <div className="mx-auto flex min-h-[75vh] max-w-md flex-col justify-center">
         {/* Heading */}
         <div className="mb-8 text-center">
-          <div className="mb-4 flex justify-center">
-            <FiBookOpen size={34} className="text-blue-700" />
-          </div>
-
           <h1 className="text-3xl font-semibold tracking-tight text-slate-900">
             Welcome back
           </h1>

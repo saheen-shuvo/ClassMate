@@ -38,59 +38,6 @@ export default function Banner() {
             </Link>
           </div>
         </div>
-
-        <div className="mt-16 border-t border-slate-200 pt-8 sm:mt-20">
-          <p className="mb-6 text-xs font-semibold uppercase tracking-widest text-slate-500">
-            Everything you need to collaborate
-          </p>
-
-          <div className="grid gap-8 sm:grid-cols-3 sm:gap-6">
-            <div className="flex items-start gap-4">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-700">
-                <FiBookOpen size={20} />
-              </div>
-
-              <div>
-                <h2 className="text-sm font-semibold text-slate-900">
-                  Study Resources
-                </h2>
-                <p className="mt-1 text-sm leading-6 text-slate-600">
-                  Share notes and access course materials in one place.
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-start gap-4">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-700">
-                <FiUsers size={20} />
-              </div>
-
-              <div>
-                <h2 className="text-sm font-semibold text-slate-900">
-                  Team Collaboration
-                </h2>
-                <p className="mt-1 text-sm leading-6 text-slate-600">
-                  Find compatible teammates for your next project.
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-start gap-4">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-700">
-                <FiBell size={20} />
-              </div>
-
-              <div>
-                <h2 className="text-sm font-semibold text-slate-900">
-                  Campus Updates
-                </h2>
-                <p className="mt-1 text-sm leading-6 text-slate-600">
-                  Keep track of announcements and presentation topics.
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
       </div>
     </section>
   );
