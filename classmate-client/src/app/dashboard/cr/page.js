@@ -2,6 +2,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import {
   LayoutDashboard,
   BookOpen,
@@ -12,11 +13,8 @@ import {
   Menu,
   X,
   Plus,
-  Search,
-  ChevronLeft,
   ChevronRight,
   LogOut,
-  Settings,
   UserRound,
   CalendarDays,
   TrendingUp,
@@ -25,12 +23,13 @@ import {
   Trash2,
   Sparkles,
   MoreHorizontal,
-  GraduationCap,
   Upload,
   Megaphone,
   PanelLeftClose,
   PanelLeftOpen,
+  HomeIcon,
 } from "lucide-react";
+import PresentationComponent from "@/components/crDashboard/Presentation";
 
 export default function CRDashboardPage() {
   const [activePage, setActivePage] = useState("overview");
@@ -160,30 +159,6 @@ export default function CRDashboardPage() {
       priority: "Low",
       date: "Nov 03",
       course: "CSE 321",
-    },
-  ];
-
-  const presentations = [
-    {
-      id: 1,
-      title: "Artificial Intelligence in Modern Healthcare",
-      course: "CSE 412",
-      subtopics: 5,
-      status: "Available",
-    },
-    {
-      id: 2,
-      title: "Cloud Computing and Distributed Systems",
-      course: "CSE 421",
-      subtopics: 4,
-      status: "Available",
-    },
-    {
-      id: 3,
-      title: "Cybersecurity in Web Applications",
-      course: "CSE 415",
-      subtopics: 6,
-      status: "Available",
     },
   ];
 
@@ -416,13 +391,14 @@ export default function CRDashboardPage() {
 
         {/* Sidebar Footer */}
         <div className="border-t border-slate-100 p-3">
-          <button
-            title={sidebarCollapsed ? "Settings" : ""}
+          <Link
+            href="/"
+            title={sidebarCollapsed ? "Home" : ""}
             className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-xs font-semibold text-slate-500 hover:bg-slate-50 hover:text-slate-900"
           >
-            <Settings size={18} />
-            {!sidebarCollapsed && "Settings"}
-          </button>
+            <HomeIcon size={18} />
+            {!sidebarCollapsed && "Home"}
+          </Link>
 
           <button
             title={sidebarCollapsed ? "Logout" : ""}
@@ -977,58 +953,7 @@ export default function CRDashboardPage() {
 
           {/* Presentations Page */}
           {activePage === "presentations" && (
-            <section className="space-y-5">
-              <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
-                <div>
-                  <h2 className="text-lg font-bold text-slate-900">
-                    Presentation Topics
-                  </h2>
-                  <p className="mt-1 text-xs text-slate-500">
-                    Manage seminar and presentation topics.
-                  </p>
-                </div>
-
-                <button
-                  onClick={() => openModal("presentations")}
-                  className="flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-bold text-white hover:bg-blue-700"
-                >
-                  <Plus size={16} /> Add Topic
-                </button>
-              </div>
-
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-                {presentations.map((item) => (
-                  <div
-                    key={item.id}
-                    className="rounded-2xl border border-slate-200 bg-white p-5 transition hover:border-blue-200 hover:shadow-sm"
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="rounded-md bg-blue-50 px-2 py-1 text-[10px] font-bold text-blue-700">
-                        {item.course}
-                      </span>
-
-                      <button className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100">
-                        <MoreHorizontal size={18} />
-                      </button>
-                    </div>
-
-                    <h3 className="mt-4 text-sm font-bold leading-relaxed text-slate-900">
-                      {item.title}
-                    </h3>
-
-                    <div className="mt-5 flex items-center justify-between border-t border-slate-100 pt-4">
-                      <span className="text-[11px] text-slate-500">
-                        {item.subtopics} subtopics
-                      </span>
-
-                      <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-bold text-emerald-700">
-                        {item.status}
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </section>
+            <PresentationComponent />
           )}
 
           {/* Quiz Bank Page */}
