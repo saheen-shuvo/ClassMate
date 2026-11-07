@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState } from "react";
@@ -30,11 +29,61 @@ import {
   HomeIcon,
 } from "lucide-react";
 import PresentationComponent from "@/components/crDashboard/Presentation";
+import Swal from "sweetalert2";
 
 export default function CRDashboardPage() {
   const [activePage, setActivePage] = useState("overview");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+
+  const handleLogout = async () => {
+    const result = await Swal.fire({
+      icon: "question",
+      title: "Log out?",
+      text: "Are you sure you want to log out of ClassMate?",
+      showCancelButton: true,
+      confirmButtonText: "Yes, log out",
+      cancelButtonText: "Cancel",
+      confirmButtonColor: "#dc2626",
+      cancelButtonColor: "#64748b",
+      reverseButtons: true,
+    });
+
+    if (!result.isConfirmed) return;
+
+    try {
+      // Clear demo authentication data
+      localStorage.removeItem("userRole");
+      localStorage.removeItem("userEmail");
+      localStorage.removeItem("isLoggedIn");
+
+      // Notify other components about authentication changes
+      window.dispatchEvent(new Event("auth-change"));
+
+      // Show success message
+      await Swal.fire({
+        icon: "success",
+        title: "Logged out!",
+        text: "You have successfully logged out.",
+        confirmButtonColor: "#2563eb",
+        timer: 1500,
+        timerProgressBar: true,
+        showConfirmButton: false,
+      });
+
+      // Redirect to login page
+      window.location.href = "/login";
+    } catch (error) {
+      console.error("Logout failed:", error);
+
+      Swal.fire({
+        icon: "error",
+        title: "Logout failed",
+        text: "Please try again.",
+        confirmButtonColor: "#2563eb",
+      });
+    }
+  };
 
   // Sample dashboard data
   const stats = [
@@ -83,9 +132,7 @@ export default function CRDashboardPage() {
   const navigation = [
     {
       title: "WORKSPACE",
-      items: [
-        { id: "overview", label: "Overview", icon: LayoutDashboard },
-      ],
+      items: [{ id: "overview", label: "Overview", icon: LayoutDashboard }],
     },
     {
       title: "ACADEMIC MANAGEMENT",
@@ -154,8 +201,7 @@ export default function CRDashboardPage() {
     {
       id: 3,
       title: "Classroom Change Notice",
-      description:
-        "Tomorrow's lecture will take place in room 504.",
+      description: "Tomorrow's lecture will take place in room 504.",
       priority: "Low",
       date: "Nov 03",
       course: "CSE 321",
@@ -239,7 +285,6 @@ export default function CRDashboardPage() {
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800">
-
       {/* Mobile Overlay */}
       {mobileSidebarOpen && (
         <div
@@ -262,7 +307,6 @@ export default function CRDashboardPage() {
         {/* Logo */}
         <div className="flex h-[72px] shrink-0 items-center justify-between border-b border-slate-100 px-5">
           <div className="flex items-center gap-3 overflow-hidden">
-
             {!sidebarCollapsed && (
               <div className="min-w-0">
                 <h2 className="text-base font-extrabold tracking-tight text-slate-900">
@@ -401,6 +445,7 @@ export default function CRDashboardPage() {
           </Link>
 
           <button
+            onClick={handleLogout}
             title={sidebarCollapsed ? "Logout" : ""}
             className="mt-1 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-xs font-semibold text-slate-500 hover:bg-rose-50 hover:text-rose-600"
           >
@@ -422,10 +467,8 @@ export default function CRDashboardPage() {
           sidebarCollapsed ? "lg:ml-[76px]" : "lg:ml-[260px]"
         }`}
       >
-
         {/* Top Header */}
         <header className="sticky top-0 z-30 flex h-[72px] items-center justify-between border-b border-slate-200 bg-white/95 px-4 backdrop-blur-md sm:px-6 lg:px-8">
-
           <div className="flex min-w-0 items-center gap-3">
             <button
               onClick={() => setMobileSidebarOpen(true)}
@@ -469,7 +512,6 @@ export default function CRDashboardPage() {
 
         {/* Page Content */}
         <main className="mx-auto max-w-[1600px] space-y-7 p-4 sm:p-6 lg:p-8">
-
           {/* Toast */}
           {toast && (
             <div className="flex items-center justify-between rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-xs font-semibold text-blue-700">
@@ -499,9 +541,9 @@ export default function CRDashboardPage() {
                     </h2>
 
                     <p className="mt-2 max-w-xl text-sm leading-relaxed text-slate-500">
-                      Manage your assigned courses, share learning
-                      materials, communicate with students, and organize
-                      class presentations from one place.
+                      Manage your assigned courses, share learning materials,
+                      communicate with students, and organize class
+                      presentations from one place.
                     </p>
 
                     <div className="mt-4 flex flex-wrap items-center gap-4 text-xs text-slate-500">
@@ -530,7 +572,9 @@ export default function CRDashboardPage() {
                     </button>
 
                     <button
-                      onClick={() => showToast("Presentation AI is coming soon.")}
+                      onClick={() =>
+                        showToast("Presentation AI is coming soon.")
+                      }
                       className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-xs font-bold text-slate-700 transition hover:bg-slate-50"
                     >
                       <Sparkles size={16} className="text-blue-600" />
@@ -567,10 +611,7 @@ export default function CRDashboardPage() {
                             <Icon size={20} />
                           </div>
 
-                          <ArrowUpRight
-                            size={17}
-                            className="text-slate-300"
-                          />
+                          <ArrowUpRight size={17} className="text-slate-300" />
                         </div>
 
                         <div className="mt-5">
@@ -599,10 +640,8 @@ export default function CRDashboardPage() {
 
               {/* Main Dashboard Grid */}
               <section className="grid grid-cols-1 gap-6 xl:grid-cols-12">
-
                 {/* Left Column */}
                 <div className="space-y-6 xl:col-span-8">
-
                   {/* Quick Actions */}
                   <div className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6">
                     <div className="mb-5">
@@ -627,7 +666,8 @@ export default function CRDashboardPage() {
                         },
                         {
                           title: "Post Announcement",
-                          description: "Notify students about important updates.",
+                          description:
+                            "Notify students about important updates.",
                           icon: Megaphone,
                           action: () => {
                             navigate("announcements");
@@ -726,7 +766,6 @@ export default function CRDashboardPage() {
 
                 {/* Right Column */}
                 <div className="space-y-6 xl:col-span-4">
-
                   {/* AI Assistant */}
                   <div className="rounded-2xl bg-slate-900 p-6 text-white">
                     <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-500/20 text-blue-300">
@@ -744,7 +783,9 @@ export default function CRDashboardPage() {
                     </p>
 
                     <button
-                      onClick={() => showToast("Presentation AI is coming soon.")}
+                      onClick={() =>
+                        showToast("Presentation AI is coming soon.")
+                      }
                       className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 py-3 text-xs font-bold transition hover:bg-blue-700"
                     >
                       Launch AI Generator
@@ -847,7 +888,7 @@ export default function CRDashboardPage() {
                       <button
                         onClick={() => {
                           setNotes((prev) =>
-                            prev.filter((item) => item.id !== note.id)
+                            prev.filter((item) => item.id !== note.id),
                           );
                           showToast("Note removed from demo list.");
                         }}
@@ -952,9 +993,7 @@ export default function CRDashboardPage() {
           )}
 
           {/* Presentations Page */}
-          {activePage === "presentations" && (
-            <PresentationComponent />
-          )}
+          {activePage === "presentations" && <PresentationComponent />}
 
           {/* Quiz Bank Page */}
           {activePage === "quizzes" && (
@@ -973,14 +1012,15 @@ export default function CRDashboardPage() {
               </p>
 
               <button
-                onClick={() => showToast("Quiz Bank integration is coming soon.")}
+                onClick={() =>
+                  showToast("Quiz Bank integration is coming soon.")
+                }
                 className="mt-5 rounded-xl bg-blue-600 px-5 py-2.5 text-xs font-bold text-white hover:bg-blue-700"
               >
                 Explore Quiz Bank
               </button>
             </section>
           )}
-
         </main>
       </div>
 

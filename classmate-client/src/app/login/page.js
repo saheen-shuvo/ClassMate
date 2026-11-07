@@ -98,8 +98,15 @@ export default function Login() {
       timerProgressBar: true,
     });
 
-    // Redirect to dashboard
-    router.push("/dashboard");
+    // Redirect based on user role
+    const dashboardRoutes = {
+      cr: "/dashboard/cr",
+      student: "/dashboard/student",
+      faculty: "/dashboard/faculty",
+      admin: "/dashboard/admin",
+    };
+
+    router.push(dashboardRoutes[account.role] || "/dashboard");
   };
 
   return (
