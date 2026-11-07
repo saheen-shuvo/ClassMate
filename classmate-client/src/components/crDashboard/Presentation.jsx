@@ -27,26 +27,35 @@ import {
 export default function PresentationComponent() {
   const [courses, setCourses] = useState([]);
   const [showModal, setShowModal] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [deletingId, setDeletingId] = useState(null);
   const [search, setSearch] = useState("");
   const [form, setForm] = useState({
     courseName: "",
-    teammates: "4",
+    teammates: "5",
+    submissionDeadline: "",
+    presentationDate: "",
     topics: [""],
   });
   const [error, setError] = useState("");
 
-  const loadCourses = () => {
-    setCourses(getPresentationCourses());
+  const loadCourses = async () => {
+    try {
+      setLoading(true);
+
+      const data = await getPresentationCourses();
+      setCourses(data);
+    } catch (error) {
+      console.error("Failed to load presentations:", error);
+      setError(error.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
     loadCourses();
-
-    window.addEventListener("presentations-updated", loadCourses);
-
-    return () => {
-      window.removeEventListener("presentations-updated", loadCourses);
-    };
   }, []);
 
   const handleTopicChange = (index, value) => {
@@ -74,7 +83,7 @@ export default function PresentationComponent() {
     });
   };
 
-  const handleCreateCourse = (e) => {
+  const handleCreateCourse = async (e) => {
     e.preventDefault();
     setError("");
 
@@ -87,50 +96,84 @@ export default function PresentationComponent() {
       return;
     }
 
+    if (!form.submissionDeadline) {
+      setError("Please select a submission deadline.");
+      return;
+    }
+
+    if (!form.presentationDate) {
+      setError("Please select a presentation date.");
+      return;
+    }
+
+    if (form.submissionDeadline > form.presentationDate) {
+      setError("Submission deadline cannot be after presentation date.");
+      return;
+    }
+
     if (!validTopics.length) {
       setError("Please add at least one topic.");
       return;
     }
 
-    if (new Set(validTopics.map((t) => t.toLowerCase())).size !== validTopics.length) {
+    if (
+      new Set(validTopics.map((t) => t.toLowerCase())).size !==
+      validTopics.length
+    ) {
       setError("Duplicate topics are not allowed.");
       return;
     }
 
     try {
-      createPresentationCourse({
-        courseName: form.courseName,
-        teammates: form.teammates,
+      setSubmitting(true);
+
+      await createPresentationCourse({
+        courseName: form.courseName.trim(),
+        teammates: Number(form.teammates),
+        submissionDeadline: form.submissionDeadline,
+        presentationDate: form.presentationDate,
         topics: validTopics,
       });
 
-      loadCourses();
+      await loadCourses();
 
       setForm({
         courseName: "",
-        teammates: "4",
+        teammates: "5",
+        submissionDeadline: "",
+        presentationDate: "",
         topics: [""],
       });
 
       setShowModal(false);
-    } catch (err) {
-      setError(err.message);
+    } catch (error) {
+      setError(error.message);
+    } finally {
+      setSubmitting(false);
     }
   };
 
-  const handleDelete = (course) => {
+  const handleDelete = async (course) => {
     const confirmed = window.confirm(
-      `Delete the presentation group for ${course.courseName}?`
+      `Delete the presentation group for ${course.courseName}?`,
     );
 
     if (!confirmed) return;
 
-    deletePresentationCourse(course.id);
-    loadCourses();
-  };
+    try {
+      setDeletingId(course._id);
 
+      await deletePresentationCourse(course._id);
+
+      await loadCourses();
+    } catch (error) {
+      alert(error.message);
+    } finally {
+      setDeletingId(null);
+    }
+  };
   const filteredCourses = courses.filter((course) =>
-    course.courseName.toLowerCase().includes(search.toLowerCase())
+    course.courseName.toLowerCase().includes(search.toLowerCase()),
   );
 
   const getStats = (course) => ({
@@ -143,7 +186,6 @@ export default function PresentationComponent() {
   return (
     <div className="min-h-screen bg-slate-50/70 p-4 sm:p-6 lg:p-8">
       <div className="mx-auto max-w-7xl space-y-6">
-
         {/* Page Header */}
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
@@ -189,7 +231,7 @@ export default function PresentationComponent() {
               value: courses.reduce(
                 (sum, c) =>
                   sum + c.topics.filter((t) => t.status === "selected").length,
-                0
+                0,
               ),
               icon: Clock,
               iconBg: "bg-amber-50",
@@ -200,7 +242,7 @@ export default function PresentationComponent() {
               value: courses.reduce(
                 (sum, c) =>
                   sum + c.topics.filter((t) => t.status === "submitted").length,
-                0
+                0,
               ),
               icon: CheckCircle2,
               iconBg: "bg-green-50",
@@ -260,7 +302,14 @@ export default function PresentationComponent() {
           </div>
 
           <div className="p-5">
-            {filteredCourses.length === 0 ? (
+            {loading ? (
+              <div className="flex flex-col items-center justify-center py-14">
+                <div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-100 border-t-blue-600" />
+                <p className="mt-3 text-sm text-slate-500">
+                  Loading presentation groups...
+                </p>
+              </div>
+            ) : filteredCourses.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-14 text-center">
                 <div className="rounded-full bg-blue-50 p-4">
                   <Presentation size={28} className="text-blue-600" />
@@ -292,13 +341,13 @@ export default function PresentationComponent() {
 
                   return (
                     <div
-                      key={course.id}
+                      key={course._id}
                       className="group rounded-xl border border-slate-200 bg-white p-5 transition hover:border-blue-200 hover:shadow-md"
                     >
                       <div className="flex items-start justify-between gap-3">
                         <Link
                           href={`/dashboard/cr/presentations/${encodeURIComponent(
-                            course.id
+                            course._id,
                           )}`}
                           className="flex min-w-0 flex-1 items-center gap-3"
                         >
@@ -318,10 +367,15 @@ export default function PresentationComponent() {
 
                         <button
                           onClick={() => handleDelete(course)}
+                          disabled={deletingId === course._id}
                           title="Delete course"
-                          className="rounded-lg p-2 text-slate-400 transition hover:bg-red-50 hover:text-red-600"
+                          className="rounded-lg p-2 text-slate-400 transition hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
                         >
-                          <Trash2 size={17} />
+                          {deletingId === course._id ? (
+                            <span className="block h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-red-600" />
+                          ) : (
+                            <Trash2 size={17} />
+                          )}
                         </button>
                       </div>
 
@@ -362,7 +416,7 @@ export default function PresentationComponent() {
 
                         <Link
                           href={`/dashboard/cr/presentations/${encodeURIComponent(
-                            course.id
+                            course._id,
                           )}`}
                           className="inline-flex items-center gap-1.5 text-sm font-semibold text-blue-600 transition hover:text-blue-700"
                         >
@@ -385,7 +439,7 @@ export default function PresentationComponent() {
               <div className="flex items-center justify-between border-b border-slate-100 p-5">
                 <div>
                   <h2 className="font-semibold text-slate-900">
-                    Create Presentation Group
+                    Create Presentation
                   </h2>
                   <p className="mt-1 text-sm text-slate-500">
                     Add a course and its presentation topics.
@@ -429,6 +483,52 @@ export default function PresentationComponent() {
                     }
                     className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                   />
+                </div>
+
+                {/* Presentation Schedule */}
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-slate-700">
+                      Submission Deadline
+                    </label>
+
+                    <input
+                      type="date"
+                      value={form.submissionDeadline}
+                      min={new Date().toISOString().split("T")[0]}
+                      onChange={(e) =>
+                        setForm({ ...form, submissionDeadline: e.target.value })
+                      }
+                      className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                    />
+
+                    <p className="mt-1.5 text-xs text-slate-400">
+                      Last date for submitting the group presentation.
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-slate-700">
+                      Presentation Date
+                    </label>
+
+                    <input
+                      type="date"
+                      value={form.presentationDate}
+                      min={
+                        form.submissionDeadline ||
+                        new Date().toISOString().split("T")[0]
+                      }
+                      onChange={(e) =>
+                        setForm({ ...form, presentationDate: e.target.value })
+                      }
+                      className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                    />
+
+                    <p className="mt-1.5 text-xs text-slate-400">
+                      Scheduled date for the actual presentation.
+                    </p>
+                  </div>
                 </div>
 
                 <div>
@@ -494,9 +594,10 @@ export default function PresentationComponent() {
 
                   <button
                     type="submit"
-                    className="rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700"
+                    disabled={submitting}
+                    className="rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
                   >
-                    Create Group
+                    {submitting ? "Creating..." : "Create Group"}
                   </button>
                 </div>
               </form>

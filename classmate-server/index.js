@@ -1,12 +1,23 @@
-
 require("dotenv").config();
 
 const express = require("express");
 const { connectDB, getDB } = require("./config/db");
 
-const app = express();
+const presentationRoutes = require("./routes/presentationRoutes");
 
+const app = express();
+const cors = require("cors");
+
+app.use(
+  cors({
+    origin: "http://localhost:3000",
+    methods: ["GET", "POST", "PUT", "DELETE"],
+  }),
+);
 app.use(express.json());
+
+// Presentation routes
+app.use("/api/presentations", presentationRoutes);
 
 app.get("/", (req, res) => {
   res.send("Express server is running!");

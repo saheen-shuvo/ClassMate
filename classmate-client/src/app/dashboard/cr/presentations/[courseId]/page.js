@@ -20,7 +20,7 @@ import {
   Download,
 } from "lucide-react";
 
-import { getPresentationCourses } from "@/lib/presentationStorage";
+import { getPresentationCourseById } from "@/lib/presentationStorage";
 
 export default function PresentationDetailsPage() {
   const params = useParams();
@@ -31,30 +31,27 @@ export default function PresentationDetailsPage() {
   const [search, setSearch] = useState("");
   const [activeFilter, setActiveFilter] = useState("all");
 
-  const loadCourse = useCallback(() => {
-    const courses = getPresentationCourses();
-    const foundCourse = courses.find((item) => item.id === courseId);
+  const loadCourse = useCallback(async () => {
+    try {
+      setLoading(true);
 
-    setCourse(foundCourse || null);
-    setLoading(false);
+      const data = await getPresentationCourseById(courseId);
+
+      setCourse(data);
+    } catch (error) {
+      console.error("Failed to load presentation:", error);
+      setCourse(null);
+    } finally {
+      setLoading(false);
+    }
   }, [courseId]);
 
   useEffect(() => {
     loadCourse();
-
-    window.addEventListener("presentations-updated", loadCourse);
-
-    return () => {
-      window.removeEventListener("presentations-updated", loadCourse);
-    };
   }, [loadCourse]);
 
   const handleRefresh = () => {
-    setLoading(true);
-
-    setTimeout(() => {
-      loadCourse();
-    }, 300);
+    loadCourse();
   };
 
   const topics = course?.topics || [];
@@ -134,7 +131,6 @@ export default function PresentationDetailsPage() {
   return (
     <div className="min-h-screen bg-white p-4 sm:p-6 lg:p-8">
       <div className="mx-auto max-w-7xl space-y-6">
-
         {/* Breadcrumb */}
         <Link
           href="/dashboard/cr"
@@ -271,9 +267,17 @@ export default function PresentationDetailsPage() {
             <div className="mt-5 flex flex-wrap gap-2">
               {[
                 { value: "all", label: "All Topics", count: stats.total },
-                { value: "available", label: "Available", count: stats.available },
+                {
+                  value: "available",
+                  label: "Available",
+                  count: stats.available,
+                },
                 { value: "selected", label: "Selected", count: stats.selected },
-                { value: "submitted", label: "Submitted", count: stats.submitted },
+                {
+                  value: "submitted",
+                  label: "Submitted",
+                  count: stats.submitted,
+                },
               ].map((filter) => (
                 <button
                   key={filter.value}
@@ -285,9 +289,7 @@ export default function PresentationDetailsPage() {
                   }`}
                 >
                   {filter.label}
-                  <span className="ml-1.5 opacity-80">
-                    {filter.count}
-                  </span>
+                  <span className="ml-1.5 opacity-80">{filter.count}</span>
                 </button>
               ))}
             </div>
@@ -308,7 +310,7 @@ export default function PresentationDetailsPage() {
             ) : (
               filteredTopics.map((topic, index) => (
                 <div
-                  key={topic.id}
+                  key={topic._id || `${topic.title}-${index}`}
                   className="p-5 transition hover:bg-slate-50/70"
                 >
                   <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -373,9 +375,7 @@ export default function PresentationDetailsPage() {
                               {topic.submission.submittedBy}
                             </span>
                           </p>
-                          <p>
-                            Student ID: {topic.submission.studentId}
-                          </p>
+                          <p>Student ID: {topic.submission.studentId}</p>
                           <p className="flex items-center gap-1">
                             <CalendarDays size={13} />
                             {formatDate(topic.submission.submittedAt)}
@@ -408,21 +408,6 @@ export default function PresentationDetailsPage() {
           <div className="border-t border-slate-100 bg-slate-50/70 px-5 py-3">
             <p className="text-xs text-slate-500">
               Showing {filteredTopics.length} of {stats.total} topics
-            </p>
-          </div>
-        </div>
-
-        {/* Frontend Demo Notice */}
-        <div className="flex items-start gap-3 rounded-xl border border-blue-100 bg-blue-50/60 p-4">
-          <FileText size={18} className="mt-0.5 shrink-0 text-blue-600" />
-          <div>
-            <p className="text-sm font-semibold text-blue-900">
-              Frontend demonstration
-            </p>
-            <p className="mt-1 text-xs leading-5 text-blue-700">
-              Data is currently stored in this browser. Refresh Data reads the
-              latest saved local data. Shared updates between different
-              students and devices will require backend integration.
             </p>
           </div>
         </div>
