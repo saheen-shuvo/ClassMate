@@ -856,7 +856,7 @@ export default function PresentationDetailsPage() {
             )}
 
             {/* Spin again (before confirming) */}
-            {spinResult && spinFinished && !isAssigning && (
+            {/* {spinResult && spinFinished && !isAssigning && (
               <button
                 onClick={handleSpin}
                 className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-700 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
@@ -864,7 +864,7 @@ export default function PresentationDetailsPage() {
                 <RotateCw size={17} />
                 Spin Again
               </button>
-            )}
+            )} */}
 
             {/* Footer */}
             <p className="mt-4 text-center text-xs text-slate-400">
