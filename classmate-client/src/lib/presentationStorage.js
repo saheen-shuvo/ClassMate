@@ -1,4 +1,3 @@
-
 const API_URL = `${process.env.NEXT_PUBLIC_API_URL}/api/presentations`;
 
 // Reusable API request handler
@@ -43,4 +42,19 @@ export const deletePresentationCourse = async (id) => {
   return await apiRequest(`${API_URL}/${id}`, {
     method: "DELETE",
   });
+};
+
+// PUT: Assign a topic to a student
+export const assignPresentationTopic = async (
+  courseId,
+  topicIndex,
+  selectedBy,
+) => {
+  return await apiRequest(
+    `${API_URL}/${courseId}/topics/${topicIndex}/assign`,
+    {
+      method: "PUT",
+      body: JSON.stringify({ selectedBy }),
+    },
+  );
 };

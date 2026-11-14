@@ -1,8 +1,9 @@
+/* eslint-disable react-hooks/purity */
 /* eslint-disable react-hooks/set-state-in-effect */
 
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import {
@@ -20,7 +21,14 @@ import {
   Download,
 } from "lucide-react";
 
+import { Dices, X, Sparkles, Trophy, RotateCw } from "lucide-react";
+
+import { presentationStudents } from "@/lib/presentationStudents";
+import { assignPresentationTopic } from "@/lib/presentationStorage";
+
 import { getPresentationCourseById } from "@/lib/presentationStorage";
+
+const SPIN_DURATION_MS = 3200;
 
 export default function PresentationDetailsPage() {
   const params = useParams();
@@ -30,6 +38,15 @@ export default function PresentationDetailsPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [activeFilter, setActiveFilter] = useState("all");
+  const [showLuckySpin, setShowLuckySpin] = useState(false);
+  const [isSpinning, setIsSpinning] = useState(false);
+  const [spinFinished, setSpinFinished] = useState(false);
+  const [spinResult, setSpinResult] = useState(null);
+  const [spinError, setSpinError] = useState("");
+  const [isAssigning, setIsAssigning] = useState(false);
+  const [wheelRotation, setWheelRotation] = useState(0);
+
+  const spinTimeoutRef = useRef(null);
 
   const loadCourse = useCallback(async () => {
     try {
@@ -50,11 +67,204 @@ export default function PresentationDetailsPage() {
     loadCourse();
   }, [loadCourse]);
 
+  // Clear any pending spin timer on unmount
+  useEffect(() => {
+    return () => {
+      if (spinTimeoutRef.current) clearTimeout(spinTimeoutRef.current);
+    };
+  }, []);
+
   const handleRefresh = () => {
     loadCourse();
   };
 
   const topics = course?.topics || [];
+
+  // Topics available for random assignment
+  const availableTopics = topics
+    .map((topic, index) => ({
+      ...topic,
+      originalIndex: index,
+    }))
+    .filter((topic) => topic.status === "available");
+
+  // Students who haven't received a topic yet
+  const assignedStudentIds = new Set(
+    topics
+      .filter((topic) => topic.status !== "available" && topic.selectedBy?.id)
+      .map((topic) => String(topic.selectedBy.id)),
+  );
+
+  const availableStudents = presentationStudents.filter(
+    (student) => !assignedStudentIds.has(String(student.id)),
+  );
+
+  const wheelColors = [
+    "#2563eb",
+    "#7c3aed",
+    "#0891b2",
+    "#d97706",
+    "#059669",
+    "#db2777",
+    "#4f46e5",
+    "#0d9488",
+    "#ea580c",
+    "#9333ea",
+  ];
+
+  const getWheelSegments = () => {
+    const total = availableTopics.length;
+
+    if (!total) return [];
+
+    const angle = 360 / total;
+
+    return availableTopics.map((topic, index) => {
+      // Segment 0 starts at the top (12 o'clock) and goes clockwise
+      const startAngle = -90 + index * angle;
+      const endAngle = startAngle + angle;
+      const middleAngle = startAngle + angle / 2;
+
+      const radius = 140;
+      const textRadius = radius * 0.62;
+
+      const startX = 150 + radius * Math.cos((startAngle * Math.PI) / 180);
+      const startY = 150 + radius * Math.sin((startAngle * Math.PI) / 180);
+
+      const endX = 150 + radius * Math.cos((endAngle * Math.PI) / 180);
+      const endY = 150 + radius * Math.sin((endAngle * Math.PI) / 180);
+
+      const textX = 150 + textRadius * Math.cos((middleAngle * Math.PI) / 180);
+      const textY = 150 + textRadius * Math.sin((middleAngle * Math.PI) / 180);
+
+      const largeArc = angle > 180 ? 1 : 0;
+
+      // Radial text; flip labels on the left half so they're never upside down
+      const normalized = ((middleAngle % 360) + 360) % 360;
+      const isLeftHalf = normalized > 90 && normalized < 270;
+      const textAngle = isLeftHalf ? middleAngle + 180 : middleAngle;
+
+      return {
+        ...topic,
+        color: wheelColors[index % wheelColors.length],
+        // A single segment is a full circle, which an SVG arc can't draw
+        path:
+          total === 1
+            ? null
+            : `M 150 150 L ${startX} ${startY} A ${radius} ${radius} 0 ${largeArc} 1 ${endX} ${endY} Z`,
+        textX,
+        textY,
+        textAngle,
+        angle,
+        middleAngle,
+      };
+    });
+  };
+
+  const wheelSegments = getWheelSegments();
+
+  const clearSpinTimer = () => {
+    if (spinTimeoutRef.current) {
+      clearTimeout(spinTimeoutRef.current);
+      spinTimeoutRef.current = null;
+    }
+  };
+
+  const openLuckySpin = () => {
+    clearSpinTimer();
+    setWheelRotation(0);
+    setIsSpinning(false);
+    setSpinFinished(false);
+    setSpinResult(null);
+    setSpinError("");
+    setShowLuckySpin(true);
+  };
+
+  const closeLuckySpin = () => {
+    if (isSpinning || isAssigning) return;
+
+    clearSpinTimer();
+    setShowLuckySpin(false);
+    setSpinResult(null);
+    setSpinFinished(false);
+    setSpinError("");
+    setWheelRotation(0);
+  };
+
+  const handleSpin = () => {
+    if (isSpinning || isAssigning) return;
+
+    if (!availableTopics.length || !availableStudents.length) {
+      setSpinError("No available topics or students left!");
+      return;
+    }
+
+    setSpinError("");
+    setSpinResult(null);
+    setSpinFinished(false);
+
+    // Randomly select topic and student
+    const randomIndex = Math.floor(Math.random() * availableTopics.length);
+    const randomTopic = availableTopics[randomIndex];
+
+    const randomStudent =
+      availableStudents[Math.floor(Math.random() * availableStudents.length)];
+
+    // Angle (clockwise from the top) of the middle of the winning segment
+    const segmentAngle = 360 / availableTopics.length;
+    const selectedAngle = (randomIndex + 0.5) * segmentAngle;
+
+    // We need: (finalRotation + selectedAngle) % 360 === 0
+    // so the winning segment's middle sits under the pointer at the top.
+    const currentAngle = ((wheelRotation % 360) + 360) % 360;
+    const targetAngle = (360 - selectedAngle) % 360;
+    const delta = (targetAngle - currentAngle + 360) % 360;
+
+    const finalRotation = wheelRotation + 360 * 5 + delta;
+
+    setSpinResult({
+      topic: randomTopic,
+      student: randomStudent,
+    });
+
+    setIsSpinning(true);
+    setWheelRotation(finalRotation);
+
+    clearSpinTimer();
+    spinTimeoutRef.current = setTimeout(() => {
+      setIsSpinning(false);
+      setSpinFinished(true);
+      spinTimeoutRef.current = null;
+    }, SPIN_DURATION_MS + 100);
+  };
+
+  const handleAssignTopic = async () => {
+    if (!spinResult || isAssigning || !spinFinished) return;
+
+    try {
+      setIsAssigning(true);
+      setSpinError("");
+
+      await assignPresentationTopic(
+        courseId,
+        spinResult.topic.originalIndex,
+        spinResult.student,
+      );
+
+      // Refresh course data from MongoDB
+      await loadCourse();
+
+      setSpinResult(null);
+      setSpinFinished(false);
+      setWheelRotation(0);
+      setShowLuckySpin(false);
+    } catch (error) {
+      console.error("Topic assignment failed:", error);
+      setSpinError(error.message || "Failed to assign topic.");
+    } finally {
+      setIsAssigning(false);
+    }
+  };
 
   const stats = {
     total: topics.length,
@@ -95,7 +305,16 @@ export default function PresentationDetailsPage() {
     submitted: "Submitted",
   };
 
-  if (loading) {
+  const wheelFontSize =
+    availableTopics.length > 16
+      ? "6"
+      : availableTopics.length > 12
+        ? "7"
+        : availableTopics.length > 7
+          ? "9"
+          : "11";
+
+  if (loading && !course) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center bg-slate-50/70">
         <div className="flex items-center gap-2 text-sm text-slate-500">
@@ -169,14 +388,24 @@ export default function PresentationDetailsPage() {
               </div>
             </div>
 
-            <button
-              onClick={handleRefresh}
-              disabled={loading}
-              className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 disabled:opacity-50"
-            >
-              <RefreshCw size={16} />
-              Refresh Data
-            </button>
+            <div className="flex flex-wrap items-center gap-3">
+              <button
+                onClick={openLuckySpin}
+                className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700"
+              >
+                <Dices size={17} />
+                Lucky Spin
+              </button>
+
+              <button
+                onClick={handleRefresh}
+                disabled={loading}
+                className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 disabled:opacity-50"
+              >
+                <RefreshCw size={16} />
+                Refresh Data
+              </button>
+            </div>
           </div>
         </div>
 
@@ -412,6 +641,238 @@ export default function PresentationDetailsPage() {
           </div>
         </div>
       </div>
+
+      {showLuckySpin && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm">
+          <div className="relative max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl sm:p-8">
+            {/* Close Button */}
+            <button
+              onClick={closeLuckySpin}
+              disabled={isSpinning || isAssigning}
+              className="absolute right-5 top-5 rounded-lg p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 disabled:opacity-40"
+            >
+              <X size={20} />
+            </button>
+
+            {/* Header */}
+            <div className="text-center">
+              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
+                <Dices size={28} />
+              </div>
+
+              <h2 className="mt-4 text-2xl font-bold text-slate-900">
+                Lucky Spin
+              </h2>
+
+              <p className="mt-2 text-sm text-slate-500">
+                Randomly assign a presentation topic to a student.
+              </p>
+            </div>
+
+            {/* Available Counts */}
+            <div className="mt-6 grid grid-cols-2 gap-3">
+              <div className="rounded-xl border border-blue-100 bg-blue-50/70 p-3 text-center">
+                <p className="text-2xl font-bold text-blue-700">
+                  {availableTopics.length}
+                </p>
+                <p className="text-xs font-medium text-slate-600">
+                  Available Topics
+                </p>
+              </div>
+
+              <div className="rounded-xl border border-purple-100 bg-purple-50/70 p-3 text-center">
+                <p className="text-2xl font-bold text-purple-700">
+                  {availableStudents.length}
+                </p>
+                <p className="text-xs font-medium text-slate-600">
+                  Available Students
+                </p>
+              </div>
+            </div>
+
+            {/* Topic Roulette Wheel */}
+            <div className="relative mx-auto mt-8 flex h-72 w-72 items-center justify-center sm:h-80 sm:w-80">
+              {/* Pointer */}
+              <div className="absolute -top-2 left-1/2 z-20 -translate-x-1/2">
+                <div className="h-0 w-0 border-x-[15px] border-t-[26px] border-x-transparent border-t-red-500 drop-shadow-md" />
+              </div>
+
+              {/* Wheel */}
+              {wheelSegments.length > 0 ? (
+                <div
+                  className="h-full w-full rounded-full border-[7px] border-white shadow-xl"
+                  style={{
+                    transform: `rotate(${wheelRotation}deg)`,
+                    transition: isSpinning
+                      ? `transform ${SPIN_DURATION_MS}ms cubic-bezier(0.12, 0.75, 0.15, 1)`
+                      : "none",
+                  }}
+                >
+                  <svg viewBox="0 0 300 300" className="h-full w-full">
+                    {wheelSegments.map((segment, index) => (
+                      <g key={segment._id || index}>
+                        {segment.path ? (
+                          <path
+                            d={segment.path}
+                            fill={segment.color}
+                            stroke="white"
+                            strokeWidth="2"
+                          />
+                        ) : (
+                          <circle
+                            cx="150"
+                            cy="150"
+                            r="140"
+                            fill={segment.color}
+                            stroke="white"
+                            strokeWidth="2"
+                          />
+                        )}
+
+                        <text
+                          x={segment.textX}
+                          y={segment.textY}
+                          fill="white"
+                          fontSize={wheelFontSize}
+                          fontWeight="bold"
+                          textAnchor="middle"
+                          dominantBaseline="middle"
+                          transform={`rotate(${segment.textAngle}, ${segment.textX}, ${segment.textY})`}
+                        >
+                          {segment.title.length > 16
+                            ? `${segment.title.substring(0, 14)}...`
+                            : segment.title}
+                        </text>
+                      </g>
+                    ))}
+                  </svg>
+                </div>
+              ) : (
+                <div className="flex h-full w-full items-center justify-center rounded-full border-8 border-slate-100 bg-slate-50 text-center">
+                  <p className="max-w-40 text-sm font-medium text-slate-500">
+                    No available topics left
+                  </p>
+                </div>
+              )}
+
+              {/* Center Decoration */}
+              <div className="absolute flex h-16 w-16 flex-col items-center justify-center rounded-full border-4 border-white bg-white shadow-lg sm:h-20 sm:w-20">
+                <Sparkles className="text-blue-600" size={24} />
+                <span className="text-[10px] font-black text-slate-800">
+                  SPIN
+                </span>
+              </div>
+            </div>
+
+            {/* Error */}
+            {spinError && (
+              <div className="mt-5 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
+                {spinError}
+              </div>
+            )}
+
+            {/* Result */}
+            {spinResult && spinFinished && !isSpinning && (
+              <div className="mt-7 rounded-xl border border-green-200 bg-green-50/60 p-5">
+                <div className="text-center">
+                  <Trophy className="mx-auto text-amber-500" size={32} />
+
+                  <h3 className="mt-2 text-lg font-bold text-green-800">
+                    We Have a Winner!
+                  </h3>
+                </div>
+
+                <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                  {/* Topic */}
+                  <div className="rounded-lg border border-blue-100 bg-white p-4">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-blue-600">
+                      Selected Topic
+                    </p>
+
+                    <h4 className="mt-2 font-bold text-slate-900">
+                      {spinResult.topic.title}
+                    </h4>
+                  </div>
+
+                  {/* Student */}
+                  <div className="rounded-lg border border-purple-100 bg-white p-4">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-purple-600">
+                      Selected Student
+                    </p>
+
+                    <h4 className="mt-2 font-bold text-slate-900">
+                      {spinResult.student.name}
+                    </h4>
+
+                    <p className="mt-1 text-sm text-slate-500">
+                      ID: {spinResult.student.id}
+                    </p>
+                  </div>
+                </div>
+
+                <p className="mt-4 text-center text-xs text-slate-500">
+                  Confirm to permanently assign this topic to the student.
+                </p>
+
+                <button
+                  onClick={handleAssignTopic}
+                  disabled={isAssigning}
+                  className="mt-5 flex w-full items-center justify-center gap-2 rounded-lg bg-green-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {isAssigning ? (
+                    <>
+                      <RefreshCw size={17} className="animate-spin" />
+                      Assigning...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles size={17} />
+                      Confirm Assignment
+                    </>
+                  )}
+                </button>
+              </div>
+            )}
+
+            {/* Spin Button */}
+            {(!spinResult || (spinResult && !spinFinished)) && (
+              <button
+                onClick={handleSpin}
+                disabled={
+                  isSpinning ||
+                  isAssigning ||
+                  availableTopics.length === 0 ||
+                  availableStudents.length === 0
+                }
+                className="mt-7 flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3.5 text-base font-bold text-white shadow-lg shadow-blue-100 transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <RotateCw
+                  size={20}
+                  className={isSpinning ? "animate-spin" : ""}
+                />
+
+                {isSpinning ? "Spinning..." : "SPIN NOW"}
+              </button>
+            )}
+
+            {/* Spin again (before confirming) */}
+            {spinResult && spinFinished && !isAssigning && (
+              <button
+                onClick={handleSpin}
+                className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-700 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
+              >
+                <RotateCw size={17} />
+                Spin Again
+              </button>
+            )}
+
+            {/* Footer */}
+            <p className="mt-4 text-center text-xs text-slate-400">
+              Each student and topic can only be assigned once.
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

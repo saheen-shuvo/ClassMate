@@ -1,4 +1,3 @@
-
 const express = require("express");
 
 const {
@@ -6,12 +5,16 @@ const {
   getPresentationById,
   createPresentation,
   deletePresentation,
+  assignPresentationTopic,
 } = require("../controllers/presentationController");
 
 const router = express.Router();
 
 // Get all presentation groups
 router.get("/", getPresentations);
+
+// Assign a presentation topic to a student
+router.put("/:id/topics/:topicIndex/assign", assignPresentationTopic);
 
 // Get one presentation group
 router.get("/:id", getPresentationById);

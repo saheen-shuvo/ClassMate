@@ -1,4 +1,3 @@
-
 const { getDB } = require("../config/db");
 const { ObjectId } = require("mongodb");
 
@@ -125,9 +124,7 @@ const createPresentation = async (req, res) => {
       });
     }
 
-    const result = await db
-      .collection(COLLECTION)
-      .insertOne(newPresentation);
+    const result = await db.collection(COLLECTION).insertOne(newPresentation);
 
     res.status(201).json({
       message: "Presentation group created successfully.",
@@ -141,6 +138,67 @@ const createPresentation = async (req, res) => {
 
     res.status(500).json({
       message: "Failed to create presentation group.",
+    });
+  }
+};
+
+// PUT: Assign an available topic to a student
+const assignPresentationTopic = async (req, res) => {
+  try {
+    const db = getDB();
+    const { id, topicIndex } = req.params;
+    const { selectedBy } = req.body;
+
+    const index = Number(topicIndex);
+
+    if (!ObjectId.isValid(id)) {
+      return res.status(400).json({
+        message: "Invalid presentation ID.",
+      });
+    }
+
+    if (!Number.isInteger(index) || index < 0) {
+      return res.status(400).json({
+        message: "Invalid topic index.",
+      });
+    }
+
+    if (!selectedBy?.name?.trim() || !selectedBy?.id?.trim()) {
+      return res.status(400).json({
+        message: "Student name and ID are required.",
+      });
+    }
+
+    const result = await db.collection(COLLECTION).updateOne(
+      {
+        _id: new ObjectId(id),
+        [`topics.${index}.status`]: "available",
+      },
+      {
+        $set: {
+          [`topics.${index}.status`]: "selected",
+          [`topics.${index}.selectedBy`]: {
+            name: selectedBy.name.trim(),
+            id: selectedBy.id.trim(),
+          },
+        },
+      },
+    );
+
+    if (result.matchedCount === 0) {
+      return res.status(409).json({
+        message: "Topic is unavailable or presentation group was not found.",
+      });
+    }
+
+    res.status(200).json({
+      message: "Topic assigned successfully.",
+    });
+  } catch (error) {
+    console.error("Assign presentation topic error:", error);
+
+    res.status(500).json({
+      message: "Failed to assign presentation topic.",
     });
   }
 };
@@ -184,4 +242,5 @@ module.exports = {
   getPresentationById,
   createPresentation,
   deletePresentation,
+  assignPresentationTopic,
 };
