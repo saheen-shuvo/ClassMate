@@ -1,28 +1,37 @@
+
 require("dotenv").config();
 
 const express = require("express");
-const { connectDB, getDB } = require("./config/db");
-
-const presentationRoutes = require("./routes/presentationRoutes");
-
-const app = express();
 const cors = require("cors");
 
+const { connectDB, getDB } = require("./config/db");
+
+// Import Routes
+const presentationRoutes = require("./routes/presentationRoutes");
+const announcementRoutes = require("./routes/announcementRoutes");
+
+const app = express();
+
+// Middleware
 app.use(
   cors({
     origin: "http://localhost:3000",
     methods: ["GET", "POST", "PUT", "DELETE"],
   }),
 );
+
 app.use(express.json());
 
-// Presentation routes
+// API Routes
 app.use("/api/presentations", presentationRoutes);
+app.use("/api/announcements", announcementRoutes);
 
+// Root Route
 app.get("/", (req, res) => {
   res.send("Express server is running!");
 });
 
+// Database Test Route
 app.get("/test-db", async (req, res) => {
   try {
     const db = getDB();
@@ -41,14 +50,20 @@ app.get("/test-db", async (req, res) => {
   }
 });
 
+// Start Server
 const startServer = async () => {
-  await connectDB();
+  try {
+    await connectDB();
 
-  const PORT = process.env.PORT || 5001;
+    const PORT = process.env.PORT || 5001;
 
-  app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
-  });
+    app.listen(PORT, () => {
+      console.log(`Server running on port ${PORT}`);
+    });
+  } catch (error) {
+    console.error("Server startup failed:", error.message);
+    process.exit(1);
+  }
 };
 
 startServer();
