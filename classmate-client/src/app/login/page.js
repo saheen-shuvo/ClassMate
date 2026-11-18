@@ -83,7 +83,6 @@ export default function Login() {
     }
 
     // Save login information
-    // Updated nothing
     localStorage.setItem("userRole", account.role);
     localStorage.setItem("userEmail", account.email);
     localStorage.setItem("isLoggedIn", "true");
