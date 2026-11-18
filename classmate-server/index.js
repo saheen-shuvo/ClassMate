@@ -5,6 +5,10 @@ const { connectDB, getDB } = require("./config/db");
 
 const presentationRoutes = require("./routes/presentationRoutes");
 
+
+const assignmentRoutes = require("./routes/assignmentRoutes");
+
+
 const app = express();
 const cors = require("cors");
 
@@ -15,6 +19,10 @@ app.use(
   }),
 );
 app.use(express.json());
+
+
+app.use("/api/assignments", assignmentRoutes);
+
 
 // Presentation routes
 app.use("/api/presentations", presentationRoutes);
