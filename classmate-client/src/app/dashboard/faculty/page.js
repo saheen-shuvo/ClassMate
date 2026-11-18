@@ -1,6 +1,7 @@
+
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import {
   LayoutDashboard,
@@ -21,139 +22,21 @@ import {
   Clock,
   Trash2,
   Sparkles,
-  MoreHorizontal,
   Upload,
   Megaphone,
   PanelLeftClose,
   PanelLeftOpen,
-  HomeIcon,
+  Home,
 } from "lucide-react";
 import PresentationComponent from "@/components/crDashboard/Presentation";
 import Swal from "sweetalert2";
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
 export default function FacultyDashboardPage() {
   const [activePage, setActivePage] = useState("overview");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
-
-  const handleLogout = async () => {
-    const result = await Swal.fire({
-      icon: "question",
-      title: "Log out?",
-      text: "Are you sure you want to log out of ClassMate?",
-      showCancelButton: true,
-      confirmButtonText: "Yes, log out",
-      cancelButtonText: "Cancel",
-      confirmButtonColor: "#dc2626",
-      cancelButtonColor: "#64748b",
-      reverseButtons: true,
-    });
-
-    if (!result.isConfirmed) return;
-
-    try {
-      // Clear demo authentication data
-      localStorage.removeItem("userRole");
-      localStorage.removeItem("userEmail");
-      localStorage.removeItem("isLoggedIn");
-
-      // Notify other components about authentication changes
-      window.dispatchEvent(new Event("auth-change"));
-
-      // Show success message
-      await Swal.fire({
-        icon: "success",
-        title: "Logged out!",
-        text: "You have successfully logged out.",
-        confirmButtonColor: "#2563eb",
-        timer: 1500,
-        timerProgressBar: true,
-        showConfirmButton: false,
-      });
-
-      // Redirect to login page
-      window.location.href = "/login";
-    } catch (error) {
-      console.error("Logout failed:", error);
-
-      Swal.fire({
-        icon: "error",
-        title: "Logout failed",
-        text: "Please try again.",
-        confirmButtonColor: "#2563eb",
-      });
-    }
-  };
-
-  // Sample dashboard data
-  const stats = [
-    {
-      title: "Assigned Courses",
-      value: "05",
-      subtitle: "Active course modules",
-      icon: BookOpen,
-      color: "blue",
-      growth: "+2 this semester",
-    },
-    {
-      title: "Uploaded Notes",
-      value: "24",
-      subtitle: "Lecture materials",
-      icon: FileText,
-      color: "indigo",
-      growth: "+5 this week",
-    },
-    {
-      title: "Announcements",
-      value: "12",
-      subtitle: "Published broadcasts",
-      icon: Bell,
-      color: "amber",
-      growth: "+3 this week",
-    },
-    {
-      title: "Presentations",
-      value: "08",
-      subtitle: "Seminar topics",
-      icon: Presentation,
-      color: "purple",
-      growth: "+2 this month",
-    },
-    {
-      title: "Quiz Questions",
-      value: "36",
-      subtitle: "Community question bank",
-      icon: Brain,
-      color: "emerald",
-      growth: "+8 this week",
-    },
-  ];
-
-  const navigation = [
-    {
-      title: "WORKSPACE",
-      items: [{ id: "overview", label: "Overview", icon: LayoutDashboard }],
-    },
-    {
-      title: "ACADEMIC MANAGEMENT",
-      items: [
-        { id: "notes", label: "Course Notes", icon: FileText, count: 24 },
-        {
-          id: "announcements",
-          label: "Announcements",
-          icon: Bell,
-          count: 12,
-        },
-        {
-          id: "presentations",
-          label: "Presentations",
-          icon: Presentation,
-          count: 8,
-        },
-        { id: "quizzes", label: "Quiz Bank", icon: Brain },
-      ],
-    },
-  ];
 
   const [notes, setNotes] = useState([
     {
@@ -179,36 +62,13 @@ export default function FacultyDashboardPage() {
     },
   ]);
 
-  const announcements = [
-    {
-      id: 1,
-      title: "Final Examination Schedule",
-      description:
-        "The final examination routine will be published next week. Stay updated.",
-      priority: "High",
-      date: "Today",
-      course: "CSE 412",
-    },
-    {
-      id: 2,
-      title: "Assignment Submission Reminder",
-      description:
-        "Please submit your database assignment before the deadline.",
-      priority: "Medium",
-      date: "Yesterday",
-      course: "CSE 331",
-    },
-    {
-      id: 3,
-      title: "Classroom Change Notice",
-      description: "Tomorrow's lecture will take place in room 504.",
-      priority: "Low",
-      date: "Nov 03",
-      course: "CSE 321",
-    },
-  ];
+  const [announcements, setAnnouncements] = useState([]);
+  const [announcementLoading, setAnnouncementLoading] = useState(false);
+  const [announcementSubmitting, setAnnouncementSubmitting] = useState(false);
 
   const [modal, setModal] = useState(null);
+  const [toast, setToast] = useState("");
+
   const [formData, setFormData] = useState({
     title: "",
     description: "",
@@ -216,12 +76,34 @@ export default function FacultyDashboardPage() {
     priority: "Medium",
   });
 
-  const [toast, setToast] = useState("");
-
   const showToast = (message) => {
     setToast(message);
     setTimeout(() => setToast(""), 3000);
   };
+
+  const fetchAnnouncements = useCallback(async () => {
+    try {
+      setAnnouncementLoading(true);
+
+      const response = await fetch(`${API_URL}/api/announcements`);
+
+      if (!response.ok) {
+        throw new Error("Failed to fetch announcements.");
+      }
+
+      const data = await response.json();
+      setAnnouncements(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error("Fetch announcements error:", error);
+      showToast("Failed to load announcements.");
+    } finally {
+      setAnnouncementLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchAnnouncements();
+  }, [fetchAnnouncements]);
 
   const openModal = (type) => {
     setFormData({
@@ -230,10 +112,16 @@ export default function FacultyDashboardPage() {
       course: "CSE 412",
       priority: "Medium",
     });
+
     setModal(type);
   };
 
-  const handleSubmit = (e) => {
+  const navigate = (page) => {
+    setActivePage(page);
+    setMobileSidebarOpen(false);
+  };
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
 
     if (modal === "notes") {
@@ -249,23 +137,120 @@ export default function FacultyDashboardPage() {
       ]);
 
       showToast("Note added successfully!");
+      setModal(null);
+      return;
     }
 
     if (modal === "announcements") {
-      showToast("Announcement form submitted (demo only).");
-    }
+      try {
+        setAnnouncementSubmitting(true);
 
-    if (modal === "presentations") {
-      showToast("Presentation form submitted (demo only).");
-    }
+        const response = await fetch(`${API_URL}/api/announcements`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            title: formData.title,
+            description: formData.description,
+            course: formData.course,
+            priority: formData.priority,
+          }),
+        });
 
-    setModal(null);
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(
+            data.message || "Failed to publish announcement.",
+          );
+        }
+
+        await fetchAnnouncements();
+
+        showToast("Announcement published successfully!");
+        setModal(null);
+      } catch (error) {
+        console.error("Publish announcement error:", error);
+        showToast(error.message || "Failed to publish announcement.");
+      } finally {
+        setAnnouncementSubmitting(false);
+      }
+    }
   };
 
-  const navigate = (page) => {
-    setActivePage(page);
-    setMobileSidebarOpen(false);
+  const handleDeleteAnnouncement = async (id) => {
+    const result = await Swal.fire({
+      icon: "warning",
+      title: "Delete announcement?",
+      text: "This announcement will be permanently deleted.",
+      showCancelButton: true,
+      confirmButtonText: "Yes, delete",
+      cancelButtonText: "Cancel",
+      confirmButtonColor: "#dc2626",
+      reverseButtons: true,
+    });
+
+    if (!result.isConfirmed) return;
+
+    try {
+      const response = await fetch(`${API_URL}/api/announcements/${id}`, {
+        method: "DELETE",
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || "Failed to delete announcement.");
+      }
+
+      setAnnouncements((prev) => prev.filter((item) => item._id !== id));
+      showToast("Announcement deleted successfully!");
+    } catch (error) {
+      console.error("Delete announcement error:", error);
+      showToast(error.message || "Failed to delete announcement.");
+    }
   };
+
+  const handleLogout = async () => {
+    const result = await Swal.fire({
+      icon: "question",
+      title: "Log out?",
+      text: "Are you sure you want to log out of ClassMate?",
+      showCancelButton: true,
+      confirmButtonText: "Yes, log out",
+      cancelButtonText: "Cancel",
+      confirmButtonColor: "#dc2626",
+      reverseButtons: true,
+    });
+
+    if (!result.isConfirmed) return;
+
+    localStorage.removeItem("userRole");
+    localStorage.removeItem("userEmail");
+    localStorage.removeItem("isLoggedIn");
+
+    window.dispatchEvent(new Event("auth-change"));
+    window.location.href = "/login";
+  };
+
+  const navigation = [
+    {
+      title: "WORKSPACE",
+      items: [
+        { id: "overview", label: "Overview", icon: LayoutDashboard },
+      ],
+    },
+    {
+      title: "ACADEMIC MANAGEMENT",
+      items: [
+        { id: "notes", label: "Course Notes", icon: FileText },
+        { id: "announcements", label: "Announcements", icon: Bell },
+        { id: "presentations", label: "Presentations", icon: Presentation },
+        { id: "quizzes", label: "Quiz Bank", icon: Brain },
+      ],
+    },
+  ];
 
   const pageTitles = {
     overview: "Dashboard Overview",
@@ -275,12 +260,61 @@ export default function FacultyDashboardPage() {
     quizzes: "Quiz Bank",
   };
 
+  const stats = [
+    {
+      title: "Assigned Courses",
+      value: "05",
+      subtitle: "Active course modules",
+      icon: BookOpen,
+      color: "blue",
+      growth: "Current semester",
+    },
+    {
+      title: "Uploaded Notes",
+      value: notes.length.toString().padStart(2, "0"),
+      subtitle: "Lecture materials",
+      icon: FileText,
+      color: "indigo",
+      growth: "Available resources",
+    },
+    {
+      title: "Announcements",
+      value: announcements.length.toString().padStart(2, "0"),
+      subtitle: "Published broadcasts",
+      icon: Bell,
+      color: "amber",
+      growth: "Published updates",
+    },
+    {
+      title: "Presentations",
+      value: "08",
+      subtitle: "Seminar topics",
+      icon: Presentation,
+      color: "purple",
+      growth: "Presentation workspace",
+    },
+    {
+      title: "Quiz Questions",
+      value: "36",
+      subtitle: "Community question bank",
+      icon: Brain,
+      color: "emerald",
+      growth: "Quiz resources",
+    },
+  ];
+
   const colorStyles = {
     blue: "bg-blue-50 text-blue-600",
     indigo: "bg-indigo-50 text-indigo-600",
     amber: "bg-amber-50 text-amber-600",
     purple: "bg-purple-50 text-purple-600",
     emerald: "bg-emerald-50 text-emerald-600",
+  };
+
+  const getPriorityStyle = (priority) => {
+    if (priority === "High") return "bg-rose-50 text-rose-600";
+    if (priority === "Medium") return "bg-amber-50 text-amber-700";
+    return "bg-slate-100 text-slate-500";
   };
 
   return (
@@ -306,25 +340,20 @@ export default function FacultyDashboardPage() {
       >
         {/* Logo */}
         <div className="flex h-[72px] shrink-0 items-center justify-between border-b border-slate-100 px-5">
-          <div className="flex items-center gap-3 overflow-hidden">
-            {!sidebarCollapsed && (
-              <div className="min-w-0">
-                <h2 className="text-base font-extrabold tracking-tight text-slate-900">
-                  Class<span className="text-blue-600">Mate</span>
-                </h2>
-                <p className="text-[10px] font-medium text-slate-400">
-                  Academic Management
-                </p>
-              </div>
-            )}
-          </div>
+          {!sidebarCollapsed && (
+            <div>
+              <h2 className="text-base font-extrabold tracking-tight text-slate-900">
+                Class<span className="text-blue-600">Mate</span>
+              </h2>
+              <p className="text-[10px] font-medium text-slate-400">
+                Academic Management
+              </p>
+            </div>
+          )}
 
           <button
-            onClick={() => {
-              setMobileSidebarOpen(false);
-              setSidebarCollapsed(!sidebarCollapsed);
-            }}
-            className="hidden rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 lg:block"
+            onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+            className="hidden rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 lg:block"
             aria-label="Toggle sidebar"
           >
             {sidebarCollapsed ? (
@@ -337,7 +366,6 @@ export default function FacultyDashboardPage() {
           <button
             onClick={() => setMobileSidebarOpen(false)}
             className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 lg:hidden"
-            aria-label="Close sidebar"
           >
             <X size={19} />
           </button>
@@ -351,17 +379,15 @@ export default function FacultyDashboardPage() {
         >
           <div className="flex items-center gap-3">
             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-100 text-sm font-bold text-blue-700">
-              PC
+              F
             </div>
 
             {!sidebarCollapsed && (
               <div className="min-w-0">
                 <p className="truncate text-xs font-bold text-slate-800">
-                  Partho
+                  Faculty Member
                 </p>
-                <p className="text-[10px] text-slate-500">
-                  Faculty
-                </p>
+                <p className="text-[10px] text-slate-500">Faculty</p>
               </div>
             )}
           </div>
@@ -412,17 +438,12 @@ export default function FacultyDashboardPage() {
                         <>
                           <span className="flex-1">{item.label}</span>
 
-                          {item.count && (
-                            <span
-                              className={`rounded-md px-2 py-0.5 text-[10px] ${
-                                isActive
-                                  ? "bg-blue-100 text-blue-700"
-                                  : "bg-slate-100 text-slate-500"
-                              }`}
-                            >
-                              {item.count}
-                            </span>
-                          )}
+                          {item.id === "announcements" &&
+                            announcements.length > 0 && (
+                              <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[10px] text-slate-500">
+                                {announcements.length}
+                              </span>
+                            )}
                         </>
                       )}
                     </button>
@@ -437,16 +458,14 @@ export default function FacultyDashboardPage() {
         <div className="border-t border-slate-100 p-3">
           <Link
             href="/"
-            title={sidebarCollapsed ? "Home" : ""}
             className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-xs font-semibold text-slate-500 hover:bg-slate-50 hover:text-slate-900"
           >
-            <HomeIcon size={18} />
+            <Home size={18} />
             {!sidebarCollapsed && "Home"}
           </Link>
 
           <button
             onClick={handleLogout}
-            title={sidebarCollapsed ? "Logout" : ""}
             className="mt-1 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-xs font-semibold text-slate-500 hover:bg-rose-50 hover:text-rose-600"
           >
             <LogOut size={18} />
@@ -455,7 +474,7 @@ export default function FacultyDashboardPage() {
 
           {!sidebarCollapsed && (
             <p className="mt-4 text-center text-[10px] text-slate-400">
-              UniConnect © 2026
+              ClassMate © 2026
             </p>
           )}
         </div>
@@ -467,24 +486,20 @@ export default function FacultyDashboardPage() {
           sidebarCollapsed ? "lg:ml-[76px]" : "lg:ml-[260px]"
         }`}
       >
-        {/* Top Header */}
+        {/* Header */}
         <header className="sticky top-0 z-30 flex h-[72px] items-center justify-between border-b border-slate-200 bg-white/95 px-4 backdrop-blur-md sm:px-6 lg:px-8">
           <div className="flex min-w-0 items-center gap-3">
             <button
               onClick={() => setMobileSidebarOpen(true)}
-              className="rounded-lg p-2 text-slate-600 transition hover:bg-slate-100 lg:hidden"
-              aria-label="Open menu"
+              className="rounded-lg p-2 text-slate-600 hover:bg-slate-100 lg:hidden"
             >
               <Menu size={21} />
             </button>
 
             <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <h1 className="truncate text-base font-bold text-slate-900 sm:text-lg">
-                  {pageTitles[activePage]}
-                </h1>
-              </div>
-
+              <h1 className="truncate text-base font-bold text-slate-900 sm:text-lg">
+                {pageTitles[activePage]}
+              </h1>
               <p className="hidden text-xs text-slate-400 sm:block">
                 Manage your academic activities and course resources.
               </p>
@@ -499,13 +514,18 @@ export default function FacultyDashboardPage() {
               </span>
             </div>
 
-            <button className="relative rounded-xl p-2 text-slate-500 hover:bg-slate-100">
+            <button
+              onClick={() => navigate("announcements")}
+              className="relative rounded-xl p-2 text-slate-500 hover:bg-slate-100"
+            >
               <Bell size={19} />
-              <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full border-2 border-white bg-blue-600" />
+              {announcements.length > 0 && (
+                <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full border-2 border-white bg-blue-600" />
+              )}
             </button>
 
             <div className="flex h-9 w-9 items-center justify-center rounded-full border border-blue-100 bg-blue-50 text-sm font-bold text-blue-700">
-              S
+              F
             </div>
           </div>
         </header>
@@ -525,7 +545,6 @@ export default function FacultyDashboardPage() {
           {/* Overview */}
           {activePage === "overview" && (
             <>
-              {/* Welcome Banner */}
               <section className="relative overflow-hidden rounded-2xl border border-blue-100 bg-white p-6 sm:p-8">
                 <div className="absolute -right-10 -top-16 h-64 w-64 rounded-full bg-blue-50 blur-3xl" />
 
@@ -537,19 +556,20 @@ export default function FacultyDashboardPage() {
                     </div>
 
                     <h2 className="text-2xl font-extrabold tracking-tight text-slate-900 sm:text-3xl">
-                      Welcome back, Partho!
+                      Welcome to ClassMate!
                     </h2>
 
                     <p className="mt-2 max-w-xl text-sm leading-relaxed text-slate-500">
-                      Manage your assigned courses, upload lecture notes, post announcements, and create presentation topics for your students.
+                      Manage your courses, share learning materials,
+                      communicate with students, and organize presentations
+                      from one place.
                     </p>
 
                     <div className="mt-4 flex flex-wrap items-center gap-4 text-xs text-slate-500">
                       <span className="flex items-center gap-1.5">
                         <UserRound size={14} className="text-blue-600" />
-                        Faculty
+                        Faculty Member
                       </span>
-
                       <span className="flex items-center gap-1.5">
                         <CalendarDays size={14} className="text-blue-600" />
                         Fall Semester 2026
@@ -563,20 +583,18 @@ export default function FacultyDashboardPage() {
                         navigate("notes");
                         openModal("notes");
                       }}
-                      className="flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-xs font-bold text-white shadow-sm transition hover:bg-blue-700"
+                      className="flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-xs font-bold text-white shadow-sm hover:bg-blue-700"
                     >
                       <Upload size={16} />
                       Upload Notes
                     </button>
 
                     <button
-                      onClick={() =>
-                        showToast("Presentation AI is coming soon.")
-                      }
-                      className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-xs font-bold text-slate-700 transition hover:bg-slate-50"
+                      onClick={() => navigate("presentations")}
+                      className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-xs font-bold text-slate-700 hover:bg-slate-50"
                     >
-                      <Sparkles size={16} className="text-blue-600" />
-                      Presentation AI
+                      <Presentation size={16} className="text-blue-600" />
+                      Presentations
                     </button>
                   </div>
                 </div>
@@ -589,7 +607,7 @@ export default function FacultyDashboardPage() {
                     Workspace Overview
                   </h3>
                   <p className="mt-1 text-xs text-slate-500">
-                    Your course management activity at a glance.
+                    Your academic management activity at a glance.
                   </p>
                 </div>
 
@@ -608,7 +626,6 @@ export default function FacultyDashboardPage() {
                           >
                             <Icon size={20} />
                           </div>
-
                           <ArrowUpRight size={17} className="text-slate-300" />
                         </div>
 
@@ -616,11 +633,9 @@ export default function FacultyDashboardPage() {
                           <p className="text-xs font-medium text-slate-500">
                             {stat.title}
                           </p>
-
                           <h3 className="mt-1 text-3xl font-extrabold tracking-tight text-slate-900">
                             {stat.value}
                           </h3>
-
                           <p className="mt-1 text-[11px] text-slate-400">
                             {stat.subtitle}
                           </p>
@@ -636,9 +651,8 @@ export default function FacultyDashboardPage() {
                 </div>
               </section>
 
-              {/* Main Dashboard Grid */}
+              {/* Dashboard Grid */}
               <section className="grid grid-cols-1 gap-6 xl:grid-cols-12">
-                {/* Left Column */}
                 <div className="space-y-6 xl:col-span-8">
                   {/* Quick Actions */}
                   <div className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6">
@@ -647,7 +661,7 @@ export default function FacultyDashboardPage() {
                         Quick Actions
                       </h3>
                       <p className="mt-1 text-xs text-slate-500">
-                        Frequently used course management tools.
+                        Frequently used academic management tools.
                       </p>
                     </div>
 
@@ -664,8 +678,7 @@ export default function FacultyDashboardPage() {
                         },
                         {
                           title: "Post Announcement",
-                          description:
-                            "Notify students about important updates.",
+                          description: "Notify students about important updates.",
                           icon: Megaphone,
                           action: () => {
                             navigate("announcements");
@@ -673,13 +686,10 @@ export default function FacultyDashboardPage() {
                           },
                         },
                         {
-                          title: "Add Presentation",
-                          description: "Create seminar topics for classmates.",
+                          title: "Presentations",
+                          description: "Manage seminar topics and presentations.",
                           icon: Presentation,
-                          action: () => {
-                            navigate("presentations");
-                            openModal("presentations");
-                          },
+                          action: () => navigate("presentations"),
                         },
                       ].map((action) => {
                         const Icon = action.icon;
@@ -693,15 +703,12 @@ export default function FacultyDashboardPage() {
                             <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
                               <Icon size={20} />
                             </div>
-
                             <h4 className="text-xs font-bold text-slate-800">
                               {action.title}
                             </h4>
-
                             <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
                               {action.description}
                             </p>
-
                             <div className="mt-3 flex items-center gap-1 text-[11px] font-bold text-blue-600">
                               Get started <ChevronRight size={13} />
                             </div>
@@ -722,10 +729,9 @@ export default function FacultyDashboardPage() {
                           Latest learning resources.
                         </p>
                       </div>
-
                       <button
                         onClick={() => navigate("notes")}
-                        className="text-xs font-bold text-blue-600 hover:text-blue-700"
+                        className="text-xs font-bold text-blue-600"
                       >
                         View all
                       </button>
@@ -735,24 +741,21 @@ export default function FacultyDashboardPage() {
                       {notes.slice(0, 3).map((note) => (
                         <div
                           key={note.id}
-                          className="flex items-center justify-between gap-3 rounded-xl border border-slate-100 p-3 transition hover:bg-slate-50 sm:p-4"
+                          className="flex items-center justify-between gap-3 rounded-xl border border-slate-100 p-3 sm:p-4"
                         >
                           <div className="flex min-w-0 items-center gap-3">
                             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
                               <FileText size={19} />
                             </div>
-
                             <div className="min-w-0">
                               <h4 className="truncate text-xs font-bold text-slate-800">
                                 {note.title}
                               </h4>
-
                               <p className="mt-1 text-[10px] text-slate-400">
                                 {note.course} · {note.date}
                               </p>
                             </div>
                           </div>
-
                           <span className="hidden shrink-0 rounded-md bg-rose-50 px-2 py-1 text-[10px] font-bold text-rose-600 sm:block">
                             PDF
                           </span>
@@ -764,7 +767,6 @@ export default function FacultyDashboardPage() {
 
                 {/* Right Column */}
                 <div className="space-y-6 xl:col-span-4">
-                  {/* AI Assistant */}
                   <div className="rounded-2xl bg-slate-900 p-6 text-white">
                     <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-500/20 text-blue-300">
                       <Sparkles size={22} />
@@ -775,18 +777,15 @@ export default function FacultyDashboardPage() {
                     </h3>
 
                     <p className="mt-2 text-xs leading-relaxed text-slate-400">
-                      Generate structured presentation topics, subtopics,
-                      research ideas, and debating prompts for university
-                      seminars.
+                      Manage presentation topics, subtopics, research ideas,
+                      and seminar activities.
                     </p>
 
                     <button
-                      onClick={() =>
-                        showToast("Presentation AI is coming soon.")
-                      }
+                      onClick={() => navigate("presentations")}
                       className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 py-3 text-xs font-bold transition hover:bg-blue-700"
                     >
-                      Launch AI Generator
+                      Open Presentations
                       <ArrowUpRight size={15} />
                     </button>
                   </div>
@@ -802,7 +801,6 @@ export default function FacultyDashboardPage() {
                           Latest course broadcasts.
                         </p>
                       </div>
-
                       <button
                         onClick={() => navigate("announcements")}
                         className="text-xs font-bold text-blue-600"
@@ -812,38 +810,37 @@ export default function FacultyDashboardPage() {
                     </div>
 
                     <div className="space-y-4">
-                      {announcements.slice(0, 3).map((item) => (
-                        <div
-                          key={item.id}
-                          className="border-l-2 border-blue-500 pl-3"
-                        >
-                          <div className="flex items-start justify-between gap-2">
-                            <h4 className="text-xs font-bold text-slate-800">
-                              {item.title}
-                            </h4>
-
-                            <span
-                              className={`shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold ${
-                                item.priority === "High"
-                                  ? "bg-rose-50 text-rose-600"
-                                  : item.priority === "Medium"
-                                    ? "bg-amber-50 text-amber-700"
-                                    : "bg-slate-100 text-slate-500"
-                              }`}
-                            >
-                              {item.priority}
+                      {announcements.length === 0 ? (
+                        <p className="text-xs text-slate-400">
+                          No announcements available.
+                        </p>
+                      ) : (
+                        announcements.slice(0, 3).map((item) => (
+                          <div
+                            key={item._id}
+                            className="border-l-2 border-blue-500 pl-3"
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <h4 className="text-xs font-bold text-slate-800">
+                                {item.title}
+                              </h4>
+                              <span
+                                className={`shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold ${getPriorityStyle(item.priority)}`}
+                              >
+                                {item.priority}
+                              </span>
+                            </div>
+                            <p className="mt-1 line-clamp-2 text-[11px] leading-relaxed text-slate-500">
+                              {item.description}
+                            </p>
+                            <span className="mt-1 block text-[10px] text-slate-400">
+                              {item.createdAt
+                                ? new Date(item.createdAt).toLocaleDateString()
+                                : "Recently"}
                             </span>
                           </div>
-
-                          <p className="mt-1 line-clamp-2 text-[11px] leading-relaxed text-slate-500">
-                            {item.description}
-                          </p>
-
-                          <span className="mt-1 block text-[10px] text-slate-400">
-                            {item.date}
-                          </span>
-                        </div>
-                      ))}
+                        ))
+                      )}
                     </div>
                   </div>
                 </div>
@@ -851,7 +848,7 @@ export default function FacultyDashboardPage() {
             </>
           )}
 
-          {/* Course Notes Page */}
+          {/* Course Notes */}
           {activePage === "notes" && (
             <section className="space-y-5">
               <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
@@ -860,13 +857,13 @@ export default function FacultyDashboardPage() {
                     Course Notes & Materials
                   </h2>
                   <p className="mt-1 text-xs text-slate-500">
-                    Upload and manage learning resources for your classmates.
+                    Manage learning resources for your students.
                   </p>
                 </div>
 
                 <button
                   onClick={() => openModal("notes")}
-                  className="flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-bold text-white transition hover:bg-blue-700"
+                  className="flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-bold text-white hover:bg-blue-700"
                 >
                   <Plus size={16} /> Upload Note
                 </button>
@@ -909,7 +906,6 @@ export default function FacultyDashboardPage() {
                       <span className="text-[11px] text-slate-400">
                         {note.size}
                       </span>
-
                       <span className="rounded-md bg-rose-50 px-2 py-1 text-[10px] font-bold text-rose-600">
                         PDF
                       </span>
@@ -920,7 +916,7 @@ export default function FacultyDashboardPage() {
             </section>
           )}
 
-          {/* Announcements Page */}
+          {/* Announcements */}
           {activePage === "announcements" && (
             <section className="space-y-5">
               <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
@@ -942,58 +938,79 @@ export default function FacultyDashboardPage() {
               </div>
 
               <div className="space-y-3">
-                {announcements.map((item) => (
-                  <div
-                    key={item.id}
-                    className="rounded-2xl border border-slate-200 bg-white p-5"
-                  >
-                    <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
-                      <div className="flex-1">
-                        <div className="mb-2 flex flex-wrap items-center gap-2">
-                          <span className="rounded-md bg-blue-50 px-2 py-1 text-[10px] font-bold text-blue-700">
-                            {item.course}
-                          </span>
+                {announcementLoading ? (
+                  <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center">
+                    <p className="text-sm text-slate-500">
+                      Loading announcements...
+                    </p>
+                  </div>
+                ) : announcements.length === 0 ? (
+                  <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-10 text-center">
+                    <Bell size={28} className="mx-auto text-slate-300" />
+                    <h3 className="mt-3 text-sm font-bold text-slate-700">
+                      No Announcements Yet
+                    </h3>
+                    <p className="mt-1 text-xs text-slate-400">
+                      Create your first course announcement.
+                    </p>
+                  </div>
+                ) : (
+                  announcements.map((item) => (
+                    <div
+                      key={item._id}
+                      className="rounded-2xl border border-slate-200 bg-white p-5"
+                    >
+                      <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
+                        <div className="flex-1">
+                          <div className="mb-2 flex flex-wrap items-center gap-2">
+                            <span className="rounded-md bg-blue-50 px-2 py-1 text-[10px] font-bold text-blue-700">
+                              {item.course}
+                            </span>
 
-                          <span
-                            className={`rounded-full px-2 py-1 text-[10px] font-bold ${
-                              item.priority === "High"
-                                ? "bg-rose-50 text-rose-600"
-                                : item.priority === "Medium"
-                                  ? "bg-amber-50 text-amber-700"
-                                  : "bg-slate-100 text-slate-500"
-                            }`}
-                          >
-                            {item.priority} Priority
-                          </span>
+                            <span
+                              className={`rounded-full px-2 py-1 text-[10px] font-bold ${getPriorityStyle(item.priority)}`}
+                            >
+                              {item.priority} Priority
+                            </span>
+                          </div>
+
+                          <h3 className="text-sm font-bold text-slate-900">
+                            {item.title}
+                          </h3>
+
+                          <p className="mt-2 text-xs leading-relaxed text-slate-500">
+                            {item.description}
+                          </p>
+
+                          <p className="mt-3 flex items-center gap-1 text-[10px] text-slate-400">
+                            <Clock size={12} />
+                            {item.createdAt
+                              ? new Date(item.createdAt).toLocaleString()
+                              : "Recently"}
+                          </p>
                         </div>
 
-                        <h3 className="text-sm font-bold text-slate-900">
-                          {item.title}
-                        </h3>
-
-                        <p className="mt-2 text-xs leading-relaxed text-slate-500">
-                          {item.description}
-                        </p>
-
-                        <p className="mt-3 flex items-center gap-1 text-[10px] text-slate-400">
-                          <Clock size={12} /> {item.date}
-                        </p>
+                        <button
+                          onClick={() =>
+                            handleDeleteAnnouncement(item._id)
+                          }
+                          className="self-end rounded-lg p-2 text-slate-400 transition hover:bg-rose-50 hover:text-rose-600 sm:self-start"
+                          title="Delete announcement"
+                        >
+                          <Trash2 size={17} />
+                        </button>
                       </div>
-
-                      <button className="self-end rounded-lg p-2 text-slate-400 hover:bg-slate-100 sm:self-start">
-                        <MoreHorizontal size={18} />
-                      </button>
                     </div>
-                  </div>
-                ))}
+                  ))
+                )}
               </div>
             </section>
           )}
 
-          {/* Presentations Page */}
+          {/* Presentations */}
           {activePage === "presentations" && <PresentationComponent />}
 
-          {/* Quiz Bank Page */}
+          {/* Quiz Bank */}
           {activePage === "quizzes" && (
             <section className="rounded-2xl border border-slate-200 bg-white p-8 text-center sm:p-12">
               <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
@@ -1036,11 +1053,8 @@ export default function FacultyDashboardPage() {
                 <h2 className="text-base font-bold text-slate-900">
                   {modal === "notes"
                     ? "Upload Course Note"
-                    : modal === "announcements"
-                      ? "Create Announcement"
-                      : "Add Presentation Topic"}
+                    : "Create Announcement"}
                 </h2>
-
                 <p className="mt-1 text-xs text-slate-500">
                   Fill in the information below.
                 </p>
@@ -1076,11 +1090,7 @@ export default function FacultyDashboardPage() {
 
               <div>
                 <label className="mb-1.5 block text-xs font-semibold text-slate-700">
-                  {modal === "notes"
-                    ? "Note Title"
-                    : modal === "announcements"
-                      ? "Announcement Title"
-                      : "Presentation Title"}
+                  {modal === "notes" ? "Note Title" : "Announcement Title"}
                 </label>
 
                 <input
@@ -1108,9 +1118,9 @@ export default function FacultyDashboardPage() {
                     }
                     className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs outline-none focus:border-blue-500"
                   >
-                    <option>High</option>
-                    <option>Medium</option>
-                    <option>Low</option>
+                    <option value="High">High</option>
+                    <option value="Medium">Medium</option>
+                    <option value="Low">Low</option>
                   </select>
                 </div>
               )}
@@ -1121,6 +1131,7 @@ export default function FacultyDashboardPage() {
                 </label>
 
                 <textarea
+                  required={modal === "announcements"}
                   rows={4}
                   value={formData.description}
                   onChange={(e) =>
@@ -1145,13 +1156,14 @@ export default function FacultyDashboardPage() {
 
                 <button
                   type="submit"
-                  className="rounded-xl bg-blue-600 px-5 py-2.5 text-xs font-bold text-white transition hover:bg-blue-700"
+                  disabled={announcementSubmitting}
+                  className="rounded-xl bg-blue-600 px-5 py-2.5 text-xs font-bold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  {modal === "notes"
-                    ? "Add Note"
-                    : modal === "announcements"
-                      ? "Publish Announcement"
-                      : "Create Topic"}
+                  {announcementSubmitting
+                    ? "Publishing..."
+                    : modal === "notes"
+                      ? "Add Note"
+                      : "Publish Announcement"}
                 </button>
               </div>
             </form>
