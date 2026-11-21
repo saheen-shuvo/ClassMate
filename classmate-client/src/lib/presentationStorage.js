@@ -58,3 +58,40 @@ export const assignPresentationTopic = async (
     },
   );
 };
+
+export async function setPresentationTopicLocked(courseId, topicIndex, locked) {
+  return await apiRequest(
+    `${API_URL}/${courseId}/topics/${topicIndex}/lock`,
+    {
+      method: "PUT",
+      body: JSON.stringify({ locked }),
+    },
+  );
+}
+
+export async function updatePresentationSettings(courseId, settings) {
+  return await apiRequest(`${API_URL}/${courseId}/settings`, {
+    method: "PUT",
+    body: JSON.stringify(settings),
+  });
+}
+
+export async function unassignPresentationTopic(courseId, topicIndex, studentId, confirm = false) {
+  return await apiRequest(
+    `${API_URL}/${courseId}/topics/${topicIndex}/unassign`,
+    {
+      method: "DELETE",
+      body: JSON.stringify({ studentId, confirm }),
+    },
+  );
+}
+
+export async function submitPresentationTopic(courseId, topicIndex, submission) {
+  return await apiRequest(
+    `${API_URL}/${courseId}/topics/${topicIndex}/submit`,
+    {
+      method: "PUT",
+      body: JSON.stringify(submission),
+    },
+  );
+}
