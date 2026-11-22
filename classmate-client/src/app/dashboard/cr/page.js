@@ -308,10 +308,10 @@ export default function CRDashboardPage() {
       {/* Sidebar */}
       <aside
         className={`fixed inset-y-0 left-0 z-50 flex flex-col border-r border-slate-200 bg-white transition-all duration-300 ease-in-out ${
-          sidebarCollapsed ? "w-[76px]" : "w-[260px]"
+          sidebarCollapsed ? "w-19" : "w-65"
         } ${mobileSidebarOpen ? "translate-x-0" : "-translate-x-full"} lg:translate-x-0`}
       >
-        <div className="flex h-[72px] shrink-0 items-center justify-between border-b border-slate-100 px-5">
+        <div className="flex h-18 shrink-0 items-center justify-between border-b border-slate-100 px-5">
           {!sidebarCollapsed && (
             <div className="min-w-0">
               <h2 className="text-base font-extrabold tracking-tight text-slate-900">
@@ -432,9 +432,9 @@ export default function CRDashboardPage() {
       </aside>
 
       {/* Main area */}
-      <div className={`min-h-screen transition-all duration-300 ${sidebarCollapsed ? "lg:ml-[76px]" : "lg:ml-[260px]"}`}>
+      <div className={`min-h-screen transition-all duration-300 ${sidebarCollapsed ? "lg:ml-19" : "lg:ml-65"}`}>
         {/* Header */}
-        <header className="sticky top-0 z-30 flex h-[72px] items-center justify-between border-b border-slate-200 bg-white/95 px-4 backdrop-blur-md sm:px-6 lg:px-8">
+        <header className="sticky top-0 z-30 flex h-18 items-center justify-between border-b border-slate-200 bg-white/95 px-4 backdrop-blur-md sm:px-6 lg:px-8">
           <div className="flex min-w-0 items-center gap-3">
             <button
               onClick={() => setMobileSidebarOpen(true)}
@@ -829,7 +829,7 @@ export default function CRDashboardPage() {
       {/* Notes / Announcement modal */}
       {modal && (
         <div
-          className="fixed inset-0 z-[70] flex items-center justify-center overflow-y-auto bg-slate-950/40 p-4 backdrop-blur-[2px]"
+          className="fixed inset-0 z-70 flex items-center justify-center overflow-y-auto bg-slate-950/40 p-4 backdrop-blur-[2px]"
           onMouseDown={(e) => {
             if (e.target === e.currentTarget) setModal(null);
           }}
