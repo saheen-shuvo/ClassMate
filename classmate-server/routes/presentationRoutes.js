@@ -3,6 +3,8 @@ const express = require("express");
 const {
   getPresentations,
   getPresentationById,
+  getStudentPresentations,
+  selectStudentPresentationTopic,
   createPresentation,
   deletePresentation,
   assignPresentationTopic,
@@ -16,6 +18,9 @@ const router = express.Router();
 
 // Get all presentation groups
 router.get("/", getPresentations);
+
+router.get("/student", getStudentPresentations);
+router.put("/:id/topics/:topicIndex/select", selectStudentPresentationTopic);
 
 // Assign a presentation topic to a student
 router.put("/:id/topics/:topicIndex/assign", assignPresentationTopic);

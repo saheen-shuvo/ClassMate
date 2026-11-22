@@ -4,6 +4,12 @@ const { ObjectId } = require("mongodb");
 const COLLECTION = "presentations";
 const assignmentLocks = new Map();
 
+const getStudentIdentity = (req) => {
+  const email = req.get("x-user-email")?.trim().toLowerCase();
+  if (!email) return null;
+  return email;
+};
+
 const acquireAssignmentLock = async (key) => {
   let lock = assignmentLocks.get(key);
   if (!lock) {
@@ -176,6 +182,115 @@ const getPresentationById = async (req, res) => {
     res.status(500).json({
       message: "Failed to fetch presentation.",
     });
+  }
+};
+
+// GET: Get presentation groups without exposing other students' identities.
+const getStudentPresentations = async (req, res) => {
+  try {
+    const studentId = getStudentIdentity(req);
+    if (!studentId) return res.status(401).json({ message: "Student authentication is required." });
+
+    const db = getDB();
+    await migratePresentations(db);
+    const presentations = await db.collection(COLLECTION).find({}).sort({ createdAt: -1 }).toArray();
+
+    res.status(200).json(presentations.map((presentation) => {
+      const normalized = normalizePresentation(presentation);
+      return {
+        ...normalized,
+        topics: normalized.topics.map((topic, index) => {
+          const selection = topic.selections.find((item) => String(item.id) === studentId);
+          return {
+            ...topic,
+            index,
+            selections: undefined,
+            selectionCount: topic.selections.length,
+            selectedByCurrentStudent: Boolean(selection),
+            selectedAt: selection?.selectedAt || null,
+          };
+        }),
+      };
+    }));
+  } catch (error) {
+    console.error("Get student presentations error:", error);
+    res.status(500).json({ message: "Failed to fetch student presentations." });
+  }
+};
+
+// PUT: Atomically reserve a topic for the authenticated student.
+const selectStudentPresentationTopic = async (req, res) => {
+  try {
+    const studentId = getStudentIdentity(req);
+    if (!studentId) return res.status(401).json({ message: "Student authentication is required." });
+
+    const { id, topicIndex } = req.params;
+    const index = Number(topicIndex);
+    if (!ObjectId.isValid(id)) return res.status(400).json({ message: "Invalid presentation ID." });
+    if (!Number.isInteger(index) || index < 0) return res.status(400).json({ message: "Invalid topic index." });
+
+    const db = getDB();
+    await migratePresentations(db);
+    const lockKey = `${id}:student:${studentId}`;
+    const releaseLock = await acquireAssignmentLock(lockKey);
+    try {
+      const presentation = await db.collection(COLLECTION).findOne({ _id: new ObjectId(id) });
+      if (!presentation) return res.status(404).json({ message: "Presentation group not found." });
+
+      const normalized = normalizePresentation(presentation);
+      const topic = normalized.topics[index];
+      if (!topic) return res.status(404).json({ message: "Topic not found." });
+      if (topic.locked) return res.status(409).json({ message: "Topic is locked." });
+      if (topic.selections.length >= normalized.maxStudentsPerTopic)
+        return res.status(409).json({ message: "Topic is unavailable." });
+      if (topic.selections.some((selection) => String(selection.id) === studentId))
+        return res.status(409).json({ message: "You already selected this topic." });
+
+      const currentSelections = normalized.topics.reduce(
+        (count, item) => count + item.selections.filter((selection) => String(selection.id) === studentId).length,
+        0,
+      );
+      if (currentSelections >= normalized.maxTopicsPerStudent)
+        return res.status(409).json({ message: "You have reached the topic selection limit for this group." });
+
+      const result = await db.collection(COLLECTION).updateOne(
+        {
+          _id: new ObjectId(id),
+          [`topics.${index}.locked`]: { $ne: true },
+          [`topics.${index}.selections.${normalized.maxStudentsPerTopic - 1}`]: { $exists: false },
+          [`topics.${index}.selections.id`]: { $ne: studentId },
+        },
+        {
+          $push: {
+            [`topics.${index}.selections`]: {
+              id: studentId,
+              name: studentId,
+              selectedAt: new Date(),
+              submission: null,
+            },
+          },
+        },
+      );
+      if (result.matchedCount === 0) return res.status(409).json({ message: "Topic is no longer available." });
+    } finally {
+      releaseLock();
+    }
+
+    const updated = await db.collection(COLLECTION).findOne({ _id: new ObjectId(id) });
+    const selectedTopic = normalizePresentation(updated).topics[index];
+    const selection = selectedTopic.selections.find((item) => String(item.id) === studentId);
+    res.status(200).json({
+      message: "Topic selected successfully.",
+      selection: {
+        presentationId: id,
+        topicIndex: index,
+        topicTitle: selectedTopic.title,
+        selectedAt: selection?.selectedAt || null,
+      },
+    });
+  } catch (error) {
+    console.error("Select student presentation topic error:", error);
+    res.status(500).json({ message: "Failed to select presentation topic." });
   }
 };
 
@@ -546,6 +661,8 @@ const deletePresentation = async (req, res) => {
 module.exports = {
   getPresentations,
   getPresentationById,
+  getStudentPresentations,
+  selectStudentPresentationTopic,
   createPresentation,
   deletePresentation,
   assignPresentationTopic,

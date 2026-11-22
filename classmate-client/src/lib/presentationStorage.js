@@ -1,4 +1,4 @@
-const API_URL = `${process.env.NEXT_PUBLIC_API_URL}/api/presentations`;
+const API_URL = `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/presentations`;
 
 // Reusable API request handler
 const apiRequest = async (url, options = {}) => {
@@ -22,6 +22,19 @@ const apiRequest = async (url, options = {}) => {
 // GET: Fetch all presentation groups
 export const getPresentationCourses = async () => {
   return await apiRequest(API_URL);
+};
+
+export const getStudentPresentations = async (studentEmail) => {
+  return await apiRequest(`${API_URL}/student`, {
+    headers: { "X-User-Email": studentEmail },
+  });
+};
+
+export const selectStudentPresentationTopic = async (courseId, topicIndex, studentEmail) => {
+  return await apiRequest(`${API_URL}/${courseId}/topics/${topicIndex}/select`, {
+    method: "PUT",
+    headers: { "X-User-Email": studentEmail },
+  });
 };
 
 // GET: Fetch one presentation group

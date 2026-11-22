@@ -29,6 +29,7 @@ import {
   Megaphone,
 } from "lucide-react";
 import Swal from "sweetalert2";
+import StudentPresentations from "@/components/studentDashboard/Presentations";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
@@ -780,21 +781,7 @@ export default function StudentDashboardPage() {
 
           {/* Presentations */}
           {activePage === "presentations" && (
-            <section className="rounded-2xl border border-slate-200 bg-white p-8 text-center sm:p-12">
-              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
-                <Presentation size={28} />
-              </div>
-              <h2 className="mt-5 text-lg font-bold text-slate-900">My Presentations</h2>
-              <p className="mx-auto mt-2 max-w-lg text-xs leading-relaxed text-slate-500">
-                Your assigned presentation topics and submission status can appear here once the student-facing presentation API or component is connected.
-              </p>
-              <button
-                onClick={() => showToast("Student presentation view is not connected yet.")}
-                className="mt-5 rounded-xl bg-blue-600 px-5 py-2.5 text-xs font-bold text-white hover:bg-blue-700"
-              >
-                View Presentation Updates
-              </button>
-            </section>
+            <StudentPresentations studentEmail={studentEmail} />
           )}
 
           {/* Quiz bank */}
