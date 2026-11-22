@@ -57,6 +57,8 @@ const login = async (req, res) => {
     const db = getDB();
     const user = await db.collection("users").findOne({ email });
     if (!user) return res.status(401).json({ message: "Invalid email or password." });
+    if (user.active === false)
+      return res.status(403).json({ message: "This account has been disabled." });
 
     const passwordHash = user.passwordHash;
     if (!passwordHash || !(await bcrypt.compare(password, passwordHash)))
@@ -96,4 +98,28 @@ const logout = (req, res) => {
   });
 };
 
-module.exports = { register, login, me, logout, normalizeEmail };
+const updateProfile = async (req, res) => {
+  try {
+    const db = getDB();
+    const updates = {};
+    if (typeof req.body.name === "string" && req.body.name.trim())
+      updates.name = req.body.name.trim();
+    if (typeof req.body.studentId === "string")
+      updates.studentId = req.body.studentId.trim();
+    if (Object.keys(updates).length === 0)
+      return res.status(400).json({ message: "No valid profile updates supplied." });
+    updates.updatedAt = new Date();
+
+    await db.collection("users").updateOne(
+      { _id: new ObjectId(req.user._id) },
+      { $set: updates },
+    );
+    const user = await db.collection("users").findOne({ _id: new ObjectId(req.user._id) });
+    res.status(200).json({ message: "Profile updated successfully.", user: safeUser(user) });
+  } catch (error) {
+    console.error("Update profile error:", error);
+    res.status(500).json({ message: "Failed to update profile." });
+  }
+};
+
+module.exports = { register, login, me, logout, updateProfile, normalizeEmail };

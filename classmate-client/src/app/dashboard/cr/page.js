@@ -94,6 +94,7 @@ export default function CRDashboardPage() {
   const [form, setForm] = useState(EMPTY_FORM);
   const [toast, setToast] = useState("");
   const [presentationCount, setPresentationCount] = useState(0);
+  const [crName, setCrName] = useState("CR");
 
   const [notes, setNotes] = useState([
     { id: 1, title: "Introduction to Machine Learning", course: "CSE 412", date: "Nov 05, 2026", size: "2.4 MB" },
@@ -139,7 +140,9 @@ export default function CRDashboardPage() {
       .then((data) => {
         if (data.user.role !== "cr") {
           window.location.href = dashboardForRole(data.user.role);
+          return;
         }
+        setCrName(data.user.name || "CR");
       })
       .catch(() => {
         window.location.href = "/login";
@@ -339,11 +342,11 @@ export default function CRDashboardPage() {
         <div className={`mx-3 mt-5 rounded-xl bg-slate-50 p-3 ${sidebarCollapsed ? "flex justify-center" : ""}`}>
           <div className="flex items-center gap-3">
             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-100 text-sm font-bold text-blue-700">
-              S
+              {crName.charAt(0).toUpperCase()}
             </div>
             {!sidebarCollapsed && (
               <div className="min-w-0">
-                <p className="truncate text-xs font-bold text-slate-800">Shuvo</p>
+                <p className="truncate text-xs font-bold text-slate-800">{crName}</p>
                 <p className="text-[10px] text-slate-500">Course Representative</p>
               </div>
             )}
@@ -491,7 +494,7 @@ export default function CRDashboardPage() {
                     </div>
 
                     <h2 className="text-2xl font-extrabold tracking-tight text-slate-900 sm:text-3xl">
-                      Welcome back, Shuvo!
+                      Welcome back, {crName}!
                     </h2>
 
                     <p className="mt-2 max-w-xl text-sm leading-relaxed text-slate-500">

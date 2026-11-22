@@ -9,6 +9,7 @@ const presentationRoutes = require("./routes/presentationRoutes");
 const assignmentRoutes = require("./routes/assignmentRoutes");
 const authRoutes = require("./routes/authRoutes");
 const announcementRoutes = require("./routes/announcementRoutes");
+const adminRoutes = require("./routes/adminRoutes");
 
 
 const app = express();
@@ -31,7 +32,7 @@ app.use(
       if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
       return callback(null, false);
     },
-    methods: ["GET", "POST", "PUT", "DELETE"],
+    methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
     credentials: true,
   }),
 );
@@ -71,6 +72,7 @@ app.use("/api/assignments", assignmentRoutes);
 app.use("/api/presentations", presentationRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/announcements", announcementRoutes);
+app.use("/api/admin", adminRoutes);
 
 app.get("/", (req, res) => {
   res.send("Express server is running!");

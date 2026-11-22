@@ -38,6 +38,7 @@ export default function FacultyDashboardPage() {
   const [activePage, setActivePage] = useState("overview");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [facultyName, setFacultyName] = useState("Faculty");
 
   const [notes, setNotes] = useState([
     {
@@ -111,7 +112,9 @@ export default function FacultyDashboardPage() {
       .then((data) => {
         if (data.user.role !== "faculty") {
           window.location.href = dashboardForRole(data.user.role);
+          return;
         }
+        setFacultyName(data.user.name || "Faculty");
       })
       .catch(() => {
         window.location.href = "/login";
@@ -390,13 +393,13 @@ export default function FacultyDashboardPage() {
         >
           <div className="flex items-center gap-3">
             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-100 text-sm font-bold text-blue-700">
-              F
+              {facultyName.charAt(0).toUpperCase()}
             </div>
 
             {!sidebarCollapsed && (
               <div className="min-w-0">
                 <p className="truncate text-xs font-bold text-slate-800">
-                  Faculty Member
+                  {facultyName}
                 </p>
                 <p className="text-[10px] text-slate-500">Faculty</p>
               </div>
@@ -567,7 +570,7 @@ export default function FacultyDashboardPage() {
                     </div>
 
                     <h2 className="text-2xl font-extrabold tracking-tight text-slate-900 sm:text-3xl">
-                      Welcome to ClassMate!
+                      Welcome back, {facultyName}!
                     </h2>
 
                     <p className="mt-2 max-w-xl text-sm leading-relaxed text-slate-500">

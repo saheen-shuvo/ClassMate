@@ -7,6 +7,8 @@ const safeUser = (user) => ({
   email: user.email,
   role: user.role,
   studentId: user.studentId || "",
+  createdAt: user.createdAt || null,
+  active: user.active !== false,
 });
 
 const requireAuth = async (req, res, next) => {

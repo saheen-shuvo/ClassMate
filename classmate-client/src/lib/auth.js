@@ -30,9 +30,39 @@ export const getCurrentUser = () => authRequest("/me");
 export const logoutUser = () =>
   authRequest("/logout", { method: "POST", body: "{}" });
 
+export const updateProfile = (payload) =>
+  authRequest("/profile", { method: "PATCH", body: JSON.stringify(payload) });
+
 export const dashboardForRole = (role) => ({
   student: "/dashboard/student",
   cr: "/dashboard/cr",
   faculty: "/dashboard/faculty",
   admin: "/dashboard/admin",
 }[role] || "/login");
+
+export const getAdminOverview = () =>
+  authRequestFromAdmin("/overview");
+
+export const getAdminUsers = () =>
+  authRequestFromAdmin("/users");
+
+export const createAdminUser = (payload) =>
+  authRequestFromAdmin("/users", { method: "POST", body: JSON.stringify(payload) });
+
+export const updateAdminUser = (id, payload) =>
+  authRequestFromAdmin(`/users/${id}`, { method: "PATCH", body: JSON.stringify(payload) });
+
+const authRequestFromAdmin = async (path, options = {}) => {
+  const response = await fetch(`${API_URL}/api/admin${path}`, {
+    ...options,
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers,
+    },
+  });
+  let data = {};
+  try { data = await response.json(); } catch {}
+  if (!response.ok) throw new Error(data.message || "Admin request failed.");
+  return data;
+};
