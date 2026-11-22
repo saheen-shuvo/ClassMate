@@ -145,7 +145,8 @@ export default function StudentPresentations({ studentEmail }) {
         <div className="grid gap-4 md:grid-cols-2">
           {group.topics.map((topic) => {
             const full = topic.selectionCount >= (group.maxStudentsPerTopic || 1);
-            const available = !topic.locked && !full && !topic.selectedByCurrentStudent;
+            const studentHasSelection = group.topics.some((item) => item.selectedByCurrentStudent);
+            const available = !topic.locked && !full && !topic.selectedByCurrentStudent && !studentHasSelection;
             const key = `${group._id}:${topic.index}`;
             return (
               <article key={`${topic.index}-${topic.title}`} className="rounded-2xl border border-slate-200 bg-white p-5">
@@ -162,6 +163,8 @@ export default function StudentPresentations({ studentEmail }) {
                 <p className="mt-3 text-xs text-slate-500">
                   {topic.selectedByCurrentStudent
                     ? `Selected on ${formatDate(topic.selectedAt)}`
+                    : studentHasSelection
+                      ? "You already selected one topic in this presentation group."
                     : topic.locked
                       ? "This topic is locked by the course representative."
                       : full

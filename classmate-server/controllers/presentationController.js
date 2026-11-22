@@ -37,10 +37,7 @@ const normalizePresentation = (presentation) => {
     ? presentation.maxStudentsPerTopic
     : 1;
   const topicCount = Array.isArray(presentation.topics) ? presentation.topics.length : 0;
-  let maxTopicsPerStudent = Number.isInteger(presentation.maxTopicsPerStudent) && presentation.maxTopicsPerStudent >= 1
-    ? presentation.maxTopicsPerStudent
-    : 1;
-  maxTopicsPerStudent = Math.min(maxTopicsPerStudent, topicCount || 1);
+  const maxTopicsPerStudent = 1;
 
   const topics = (presentation.topics || []).map((topic) => {
     let selections = Array.isArray(topic.selections) ? topic.selections.map((selection) => ({ ...selection })) : [];
@@ -88,11 +85,7 @@ const migratePresentations = async (db) => {
       Number.isInteger(presentation.maxStudentsPerTopic) && presentation.maxStudentsPerTopic >= 1
         ? presentation.maxStudentsPerTopic
         : 1;
-    let maxTopicsPerStudent =
-      Number.isInteger(presentation.maxTopicsPerStudent) && presentation.maxTopicsPerStudent >= 1
-        ? presentation.maxTopicsPerStudent
-        : 1;
-    maxTopicsPerStudent = Math.min(maxTopicsPerStudent, topicCount || 1);
+    const maxTopicsPerStudent = 1;
 
     const topics = (presentation.topics || []).map((topic) => {
       let selections = Array.isArray(topic.selections)
@@ -125,7 +118,7 @@ const migratePresentations = async (db) => {
 
     await db.collection(COLLECTION).updateOne(
       { _id: presentation._id },
-      { $set: { maxStudentsPerTopic, maxTopicsPerStudent, topics } },
+      { $set: { maxStudentsPerTopic, maxTopicsPerStudent, topics, selectionVersion: presentation.selectionVersion || 0 } },
     );
   }
 };
@@ -230,10 +223,12 @@ const selectStudentPresentationTopic = async (req, res) => {
     if (!Number.isInteger(index) || index < 0) return res.status(400).json({ message: "Invalid topic index." });
 
     const db = getDB();
-    await migratePresentations(db);
-    const lockKey = `${id}:student:${studentId}`;
-    const releaseLock = await acquireAssignmentLock(lockKey);
+    const studentLockKey = `${id}:student:${studentId}`;
+    const topicLockKey = `${id}:topic:${index}`;
+    const releaseStudentLock = await acquireAssignmentLock(studentLockKey);
+    const releaseTopicLock = await acquireAssignmentLock(topicLockKey);
     try {
+      await migratePresentations(db);
       const presentation = await db.collection(COLLECTION).findOne({ _id: new ObjectId(id) });
       if (!presentation) return res.status(404).json({ message: "Presentation group not found." });
 
@@ -250,17 +245,25 @@ const selectStudentPresentationTopic = async (req, res) => {
         (count, item) => count + item.selections.filter((selection) => String(selection.id) === studentId).length,
         0,
       );
-      if (currentSelections >= normalized.maxTopicsPerStudent)
+      if (currentSelections >= 1)
         return res.status(409).json({ message: "You have reached the topic selection limit for this group." });
 
       const result = await db.collection(COLLECTION).updateOne(
         {
           _id: new ObjectId(id),
+          selectionVersion: presentation.selectionVersion || 0,
           [`topics.${index}.locked`]: { $ne: true },
-          [`topics.${index}.selections.${normalized.maxStudentsPerTopic - 1}`]: { $exists: false },
           [`topics.${index}.selections.id`]: { $ne: studentId },
+          "topics.selections.id": { $ne: studentId },
+          $expr: {
+            $lt: [
+              { $size: { $ifNull: [`$topics.${index}.selections`, []] } },
+              normalized.maxStudentsPerTopic,
+            ],
+          },
         },
         {
+          $inc: { selectionVersion: 1 },
           $push: {
             [`topics.${index}.selections`]: {
               id: studentId,
@@ -273,7 +276,8 @@ const selectStudentPresentationTopic = async (req, res) => {
       );
       if (result.matchedCount === 0) return res.status(409).json({ message: "Topic is no longer available." });
     } finally {
-      releaseLock();
+      releaseTopicLock();
+      releaseStudentLock();
     }
 
     const updated = await db.collection(COLLECTION).findOne({ _id: new ObjectId(id) });
@@ -354,7 +358,7 @@ const createPresentation = async (req, res) => {
       submissionDeadline,
       presentationDate,
       maxStudentsPerTopic,
-      maxTopicsPerStudent: Math.min(maxTopicsPerStudent, topics.filter((topic) => String(topic).trim()).length),
+      maxTopicsPerStudent: 1,
       createdAt: new Date(),
 
       topics: topics
@@ -450,11 +454,19 @@ const assignPresentationTopic = async (req, res) => {
       const result = await db.collection(COLLECTION).updateOne(
         {
           _id: courseObjectId,
+          selectionVersion: course.selectionVersion || 0,
           [`topics.${index}.locked`]: { $ne: true },
-          [`topics.${index}.selections.${normalized.maxStudentsPerTopic - 1}`]: { $exists: false },
           [`topics.${index}.selections.id`]: { $ne: studentId },
+          "topics.selections.id": { $ne: studentId },
+          $expr: {
+            $lt: [
+              { $size: { $ifNull: [`$topics.${index}.selections`, []] } },
+              normalized.maxStudentsPerTopic,
+            ],
+          },
         },
         {
+          $inc: { selectionVersion: 1 },
           $push: {
             [`topics.${index}.selections`]: {
               id: studentId,
@@ -488,21 +500,17 @@ const updatePresentationSettings = async (req, res) => {
   try {
     const db = getDB();
     const { id } = req.params;
-    const { maxStudentsPerTopic, maxTopicsPerStudent } = req.body;
+    const { maxStudentsPerTopic } = req.body;
 
     if (!ObjectId.isValid(id)) return res.status(400).json({ message: "Invalid presentation ID." });
     if (!Number.isInteger(maxStudentsPerTopic) || maxStudentsPerTopic < 1)
       return res.status(400).json({ message: "maxStudentsPerTopic must be an integer of at least 1." });
-    if (!Number.isInteger(maxTopicsPerStudent) || maxTopicsPerStudent < 1)
-      return res.status(400).json({ message: "maxTopicsPerStudent must be an integer of at least 1." });
-
     await migratePresentations(db);
     const course = await db.collection(COLLECTION).findOne({ _id: new ObjectId(id) });
     if (!course) return res.status(404).json({ message: "Presentation group not found." });
     const normalized = normalizePresentation(course);
 
-    if (maxTopicsPerStudent > normalized.topics.length)
-      return res.status(400).json({ message: `maxTopicsPerStudent cannot exceed ${normalized.topics.length} topics.` });
+    const maxTopicsPerStudent = 1;
 
     const highestTopicFill = normalized.topics.reduce(
       (highest, topic) => Math.max(highest, (topic.selections || []).length),

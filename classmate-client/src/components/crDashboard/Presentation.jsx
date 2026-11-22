@@ -485,12 +485,12 @@ export default function PresentationComponent() {
                   <input
                     type="number"
                     min="1"
-                    max={form.topics.length}
+                    max="1"
                     value={form.maxTopicsPerStudent}
-                    onChange={(e) => setForm({ ...form, maxTopicsPerStudent: e.target.value })}
-                    className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                    readOnly
+                    className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-500 outline-none"
                   />
-                  <p className="mt-1.5 text-xs text-slate-400">How many topics one student can choose</p>
+                  <p className="mt-1.5 text-xs text-slate-400">One topic per student in each presentation group</p>
                 </div>
               </div>
 

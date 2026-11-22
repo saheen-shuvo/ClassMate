@@ -991,12 +991,12 @@ export default function PresentationDetailsPage() {
                 <input
                   type="number"
                   min="1"
-                  max={topics.length}
+                  max="1"
                   value={settingsForm.maxTopicsPerStudent}
-                  onChange={(e) => setSettingsForm({ ...settingsForm, maxTopicsPerStudent: e.target.value })}
-                  className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-blue-500"
+                  readOnly
+                  className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-500 outline-none"
                 />
-                <p className="mt-1.5 text-xs text-slate-400">How many topics one student can choose</p>
+                <p className="mt-1.5 text-xs text-slate-400">One topic per student in each presentation group</p>
               </div>
             </div>
             {settingsError && (
