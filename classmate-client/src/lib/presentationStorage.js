@@ -4,6 +4,7 @@ const API_URL = `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/a
 const apiRequest = async (url, options = {}) => {
   const response = await fetch(url, {
     ...options,
+    credentials: "include",
     headers: {
       "Content-Type": "application/json",
       ...options.headers,
@@ -25,15 +26,12 @@ export const getPresentationCourses = async () => {
 };
 
 export const getStudentPresentations = async (studentEmail) => {
-  return await apiRequest(`${API_URL}/student`, {
-    headers: { "X-User-Email": studentEmail },
-  });
+  return await apiRequest(`${API_URL}/student`);
 };
 
 export const selectStudentPresentationTopic = async (courseId, topicIndex, studentEmail) => {
   return await apiRequest(`${API_URL}/${courseId}/topics/${topicIndex}/select`, {
     method: "PUT",
-    headers: { "X-User-Email": studentEmail },
   });
 };
 

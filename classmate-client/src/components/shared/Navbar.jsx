@@ -7,6 +7,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import Swal from "sweetalert2";
+import { getCurrentUser, logoutUser } from "@/lib/auth";
 
 import logo from "../../../public/logo.png";
 
@@ -128,29 +129,23 @@ export default function Navbar({ user: initialUser = null, onLogout }) {
     ],
   };
 
-  // Read the current demo login from localStorage.
+  // Load the authenticated user from the server session.
   const syncUser = () => {
-    const isLoggedIn = localStorage.getItem("isLoggedIn") === "true";
-    const storedRole = localStorage.getItem("userRole");
-    const email = localStorage.getItem("userEmail");
-
-    if (!isLoggedIn || !storedRole || !email) {
-      setUser(null);
-      return;
-    }
-
-    const roleNames = {
-      cr: "Class Representative",
-      student: "Student",
-      faculty: "Faculty",
-      admin: "Admin",
-    };
-
-    setUser({
-      role: storedRole,
-      email,
-      userName: roleNames[storedRole] || "User",
-    });
+    getCurrentUser()
+      .then((data) => {
+        const roleNames = {
+          cr: "Class Representative",
+          student: "Student",
+          faculty: "Faculty",
+          admin: "Admin",
+        };
+        setUser({
+          role: data.user.role,
+          email: data.user.email,
+          userName: data.user.name || roleNames[data.user.role] || "User",
+        });
+      })
+      .catch(() => setUser(null));
   };
 
   useEffect(() => {
@@ -159,12 +154,8 @@ export default function Navbar({ user: initialUser = null, onLogout }) {
     // Listen for login/logout changes within this tab.
     window.addEventListener("auth-change", syncUser);
 
-    // Also listen for localStorage changes from another tab.
-    window.addEventListener("storage", syncUser);
-
     return () => {
       window.removeEventListener("auth-change", syncUser);
-      window.removeEventListener("storage", syncUser);
     };
   }, []);
 
@@ -250,10 +241,7 @@ export default function Navbar({ user: initialUser = null, onLogout }) {
         await onLogout();
       }
 
-      // Clear the demo login.
-      localStorage.removeItem("userRole");
-      localStorage.removeItem("userEmail");
-      localStorage.removeItem("isLoggedIn");
+      await logoutUser();
 
       setUser(null);
       closeMenus();

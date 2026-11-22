@@ -5,33 +5,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FiBookOpen, FiEye, FiEyeOff, FiArrowRight } from "react-icons/fi";
-
-const demoAccounts = [
-  {
-    role: "cr",
-    label: "Class Representative",
-    email: "cr@gmail.com",
-    password: "12345678",
-  },
-  {
-    role: "student",
-    label: "Student",
-    email: "student@gmail.com",
-    password: "12345678",
-  },
-  {
-    role: "faculty",
-    label: "Faculty",
-    email: "faculty@gmail.com",
-    password: "12345678",
-  },
-  {
-    role: "admin",
-    label: "Admin",
-    email: "admin@gmail.com",
-    password: "12345678",
-  },
-];
+import { dashboardForRole, loginUser } from "@/lib/auth";
 
 export default function Login() {
   const router = useRouter();
@@ -39,6 +13,7 @@ export default function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
     email: "",
     password: "",
@@ -55,58 +30,30 @@ export default function Login() {
     setError("");
   };
 
-  // Fill the form using a demo account.
-  const handleDemoLogin = (account) => {
-    setFormData({
-      email: account.email,
-      password: account.password,
-    });
-
-    setError("");
-  };
-
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
-
-    const account = demoAccounts.find(
-      (item) =>
-        item.email === formData.email.trim().toLowerCase() &&
-        item.password === formData.password,
-    );
-
-    if (!account) {
-      setError(
-        "Invalid email or password. Please use one of the demo accounts.",
-      );
-      return;
+    setLoading(true);
+    try {
+      const data = await loginUser({
+        email: formData.email,
+        password: formData.password,
+      });
+      await Swal.fire({
+        icon: "success",
+        title: "Login Successful!",
+        text: `Welcome to ClassMate, ${data.user.name || data.user.role}!`,
+        confirmButtonText: "Go to Dashboard",
+        confirmButtonColor: "#1d4ed8",
+        timer: 2000,
+        timerProgressBar: true,
+      });
+      router.push(dashboardForRole(data.user.role));
+    } catch (requestError) {
+      setError(requestError.message || "Invalid email or password.");
+    } finally {
+      setLoading(false);
     }
-
-    // Save login information
-    localStorage.setItem("userRole", account.role);
-    localStorage.setItem("userEmail", account.email);
-    localStorage.setItem("isLoggedIn", "true");
-
-    // Show success alert
-    await Swal.fire({
-      icon: "success",
-      title: "Login Successful!",
-      text: `Welcome to ClassMate, ${account.label}!`,
-      confirmButtonText: "Go to Dashboard",
-      confirmButtonColor: "#1d4ed8",
-      timer: 2000,
-      timerProgressBar: true,
-    });
-
-    // Redirect based on user role
-    const dashboardRoutes = {
-      cr: "/dashboard/cr",
-      student: "/dashboard/student",
-      faculty: "/dashboard/faculty",
-      admin: "/dashboard/admin",
-    };
-
-    router.push(dashboardRoutes[account.role] || "/dashboard");
   };
 
   return (
@@ -121,34 +68,6 @@ export default function Login() {
           <p className="mt-3 text-sm leading-6 text-slate-600">
             Sign in to access your university learning space.
           </p>
-        </div>
-
-        {/* Demo accounts */}
-        <div className="mb-7">
-          <p className="mb-3 text-center text-sm font-medium text-slate-700">
-            Try a demo account
-          </p>
-
-          <div className="grid grid-cols-2 gap-3">
-            {demoAccounts.map((account) => (
-              <button
-                key={account.role}
-                type="button"
-                onClick={() => handleDemoLogin(account)}
-                className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-left transition hover:border-blue-600 hover:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-blue-600/20"
-              >
-                <span className="block text-sm font-semibold capitalize text-slate-900">
-                  {account.role === "cr"
-                    ? "Class Representative"
-                    : account.label}
-                </span>
-
-                <span className="mt-1 block truncate text-xs text-slate-500">
-                  {account.email}
-                </span>
-              </button>
-            ))}
-          </div>
         </div>
 
         {/* Login form */}
@@ -236,9 +155,10 @@ export default function Login() {
 
           <button
             type="submit"
+            disabled={loading}
             className="flex w-full items-center justify-center gap-2 rounded-lg bg-blue-700 px-4 py-3 text-sm font-medium text-white transition hover:bg-blue-800 focus:outline-none focus:ring-2 focus:ring-blue-700 focus:ring-offset-2"
           >
-            Sign in
+            {loading ? "Signing in..." : "Sign in"}
             <FiArrowRight size={17} />
           </button>
         </form>

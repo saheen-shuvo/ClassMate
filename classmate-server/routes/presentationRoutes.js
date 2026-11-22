@@ -15,35 +15,36 @@ const {
 } = require("../controllers/presentationController");
 
 const router = express.Router();
+const { requireAuth, requireRoles } = require("../middleware/authMiddleware");
 
 // Get all presentation groups
-router.get("/", getPresentations);
+router.get("/", requireAuth, getPresentations);
 
-router.get("/student", getStudentPresentations);
-router.put("/:id/topics/:topicIndex/select", selectStudentPresentationTopic);
+router.get("/student", requireAuth, requireRoles("student"), getStudentPresentations);
+router.put("/:id/topics/:topicIndex/select", requireAuth, requireRoles("student"), selectStudentPresentationTopic);
 
 // Assign a presentation topic to a student
-router.put("/:id/topics/:topicIndex/assign", assignPresentationTopic);
+router.put("/:id/topics/:topicIndex/assign", requireAuth, requireRoles("cr", "faculty", "admin"), assignPresentationTopic);
 
 // Update presentation selection limits
-router.put("/:id/settings", updatePresentationSettings);
+router.put("/:id/settings", requireAuth, requireRoles("cr", "faculty", "admin"), updatePresentationSettings);
 
 // Lock or unlock a topic
-router.put("/:id/topics/:topicIndex/lock", setPresentationTopicLocked);
+router.put("/:id/topics/:topicIndex/lock", requireAuth, requireRoles("cr", "faculty", "admin"), setPresentationTopicLocked);
 
 // Remove a student's topic selection
-router.delete("/:id/topics/:topicIndex/unassign", unassignPresentationTopic);
+router.delete("/:id/topics/:topicIndex/unassign", requireAuth, requireRoles("cr", "faculty", "admin"), unassignPresentationTopic);
 
 // Submit or replace a student's presentation
-router.put("/:id/topics/:topicIndex/submit", submitPresentation);
+router.put("/:id/topics/:topicIndex/submit", requireAuth, requireRoles("student"), submitPresentation);
 
 // Get one presentation group
-router.get("/:id", getPresentationById);
+router.get("/:id", requireAuth, getPresentationById);
 
 // Create a presentation group
-router.post("/", createPresentation);
+router.post("/", requireAuth, requireRoles("cr", "faculty", "admin"), createPresentation);
 
 // Delete a presentation group
-router.delete("/:id", deletePresentation);
+router.delete("/:id", requireAuth, requireRoles("cr", "faculty", "admin"), deletePresentation);
 
 module.exports = router;

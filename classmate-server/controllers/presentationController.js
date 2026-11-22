@@ -5,9 +5,7 @@ const COLLECTION = "presentations";
 const assignmentLocks = new Map();
 
 const getStudentIdentity = (req) => {
-  const email = req.get("x-user-email")?.trim().toLowerCase();
-  if (!email) return null;
-  return email;
+  return req.user?.email?.trim().toLowerCase() || null;
 };
 
 const acquireAssignmentLock = async (key) => {
@@ -605,11 +603,11 @@ const submitPresentation = async (req, res) => {
   try {
     const db = getDB();
     const { id, topicIndex } = req.params;
-    const { studentId, studentName, fileName, fileUrl } = req.body;
+    const { studentName, fileName, fileUrl } = req.body;
     const index = Number(topicIndex);
     if (!ObjectId.isValid(id)) return res.status(400).json({ message: "Invalid presentation ID." });
     if (!Number.isInteger(index) || index < 0) return res.status(400).json({ message: "Invalid topic index." });
-    if (!studentId?.toString().trim()) return res.status(400).json({ message: "Student ID is required." });
+    const studentId = req.user.email;
 
     await migratePresentations(db);
     const submission = {

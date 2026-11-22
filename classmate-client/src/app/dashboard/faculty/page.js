@@ -30,6 +30,7 @@ import {
 } from "lucide-react";
 import PresentationComponent from "@/components/crDashboard/Presentation";
 import Swal from "sweetalert2";
+import { getCurrentUser, logoutUser, dashboardForRole } from "@/lib/auth";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
@@ -85,7 +86,7 @@ export default function FacultyDashboardPage() {
     try {
       setAnnouncementLoading(true);
 
-      const response = await fetch(`${API_URL}/api/announcements`);
+      const response = await fetch(`${API_URL}/api/announcements`, { credentials: "include" });
 
       if (!response.ok) {
         throw new Error("Failed to fetch announcements.");
@@ -104,6 +105,18 @@ export default function FacultyDashboardPage() {
   useEffect(() => {
     fetchAnnouncements();
   }, [fetchAnnouncements]);
+
+  useEffect(() => {
+    getCurrentUser()
+      .then((data) => {
+        if (data.user.role !== "faculty") {
+          window.location.href = dashboardForRole(data.user.role);
+        }
+      })
+      .catch(() => {
+        window.location.href = "/login";
+      });
+  }, []);
 
   const openModal = (type) => {
     setFormData({
@@ -147,6 +160,7 @@ export default function FacultyDashboardPage() {
 
         const response = await fetch(`${API_URL}/api/announcements`, {
           method: "POST",
+          credentials: "include",
           headers: {
             "Content-Type": "application/json",
           },
@@ -196,6 +210,7 @@ export default function FacultyDashboardPage() {
     try {
       const response = await fetch(`${API_URL}/api/announcements/${id}`, {
         method: "DELETE",
+        credentials: "include",
       });
 
       const data = await response.json();
@@ -226,11 +241,7 @@ export default function FacultyDashboardPage() {
 
     if (!result.isConfirmed) return;
 
-    localStorage.removeItem("userRole");
-    localStorage.removeItem("userEmail");
-    localStorage.removeItem("isLoggedIn");
-
-    window.dispatchEvent(new Event("auth-change"));
+    await logoutUser();
     window.location.href = "/login";
   };
 

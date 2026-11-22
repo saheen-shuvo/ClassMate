@@ -30,6 +30,7 @@ import {
 } from "lucide-react";
 import Swal from "sweetalert2";
 import StudentPresentations from "@/components/studentDashboard/Presentations";
+import { getCurrentUser, logoutUser, dashboardForRole } from "@/lib/auth";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
@@ -104,16 +105,19 @@ export default function StudentDashboardPage() {
   };
 
   useEffect(() => {
-    // Read only the existing login email. No new authentication format is assumed.
-    const savedEmail = localStorage.getItem("userEmail") || "";
-    setStudentEmail(savedEmail);
-
-    if (savedEmail) {
-      const emailName = savedEmail.split("@")[0].replace(/[._-]/g, " ");
-      setStudentName(
-        emailName.replace(/\b\w/g, (character) => character.toUpperCase()) || "Student"
-      );
-    }
+    getCurrentUser()
+      .then((data) => {
+        const user = data.user;
+        if (user.role !== "student") {
+          window.location.href = dashboardForRole(user.role);
+          return;
+        }
+        setStudentEmail(user.email || "");
+        setStudentName(user.name || "Student");
+      })
+      .catch(() => {
+        window.location.href = "/login";
+      });
   }, []);
 
   const fetchAnnouncements = useCallback(async () => {
@@ -121,7 +125,7 @@ export default function StudentDashboardPage() {
       setAnnouncementLoading(true);
       setAnnouncementError("");
 
-      const response = await fetch(`${API_URL}/api/announcements`);
+      const response = await fetch(`${API_URL}/api/announcements`, { credentials: "include" });
       if (!response.ok) {
         throw new Error("Could not load announcements.");
       }
@@ -159,9 +163,7 @@ export default function StudentDashboardPage() {
 
     if (!result.isConfirmed) return;
 
-    localStorage.removeItem("userRole");
-    localStorage.removeItem("userEmail");
-    localStorage.removeItem("isLoggedIn");
+    await logoutUser();
     window.dispatchEvent(new Event("auth-change"));
     window.location.href = "/login";
   };

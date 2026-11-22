@@ -7,11 +7,16 @@ import {
   FiEyeOff,
   FiArrowRight,
 } from "react-icons/fi";
+import { useRouter } from "next/navigation";
+import Swal from "sweetalert2";
+import { registerUser } from "@/lib/auth";
 
 export default function Register() {
+  const router = useRouter();
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
   const [formData, setFormData] = useState({
     fullName: "",
@@ -33,7 +38,7 @@ export default function Register() {
     setError("");
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
 
@@ -47,14 +52,26 @@ export default function Register() {
       return;
     }
 
-    // Connect your Express.js registration API here.
-    console.log("Registration form submitted:", {
-      fullName: formData.fullName,
-      email: formData.email,
-      studentId: formData.studentId,
-      role: formData.role,
-      password: formData.password,
-    });
+    setLoading(true);
+    try {
+      await registerUser({
+        name: formData.fullName,
+        email: formData.email,
+        studentId: formData.studentId,
+        password: formData.password,
+      });
+      await Swal.fire({
+        icon: "success",
+        title: "Account created",
+        text: "Your student account is ready. Please sign in.",
+        confirmButtonColor: "#1d4ed8",
+      });
+      router.push("/login");
+    } catch (requestError) {
+      setError(requestError.message || "Could not create account.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -134,30 +151,6 @@ export default function Register() {
               required
               className="w-full rounded-lg border border-slate-300 px-4 py-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-blue-700 focus:ring-2 focus:ring-blue-700/10"
             />
-          </div>
-
-          <div>
-            <label
-              htmlFor="role"
-              className="mb-2 block text-sm font-medium text-slate-700"
-            >
-              Account type
-            </label>
-
-            <select
-              id="role"
-              name="role"
-              value={formData.role}
-              onChange={handleChange}
-              className="w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-blue-700 focus:ring-2 focus:ring-blue-700/10"
-            >
-              <option value="student">Student</option>
-              <option value="cr">Class Representative (CR)</option>
-            </select>
-
-            <p className="mt-2 text-xs leading-5 text-slate-500">
-              CR accounts should be verified by a university administrator.
-            </p>
           </div>
 
           <div>
@@ -246,9 +239,10 @@ export default function Register() {
 
           <button
             type="submit"
+            disabled={loading}
             className="flex w-full items-center justify-center gap-2 rounded-lg bg-blue-700 px-4 py-3 text-sm font-medium text-white transition hover:bg-blue-800 focus:outline-none focus:ring-2 focus:ring-blue-700 focus:ring-offset-2"
           >
-            Create account
+            {loading ? "Creating account..." : "Create account"}
             <FiArrowRight size={17} />
           </button>
         </form>

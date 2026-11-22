@@ -32,6 +32,7 @@ import {
 import Swal from "sweetalert2";
 import PresentationComponent from "@/components/crDashboard/Presentation";
 import { getPresentationCourses } from "@/lib/presentationStorage";
+import { getCurrentUser, logoutUser, dashboardForRole } from "@/lib/auth";
 
 const PAGE_TITLES = {
   overview: "Dashboard Overview",
@@ -133,6 +134,18 @@ export default function CRDashboardPage() {
     if (PAGE_TITLES[hash]) setActivePage(hash);
   }, []);
 
+  useEffect(() => {
+    getCurrentUser()
+      .then((data) => {
+        if (data.user.role !== "cr") {
+          window.location.href = dashboardForRole(data.user.role);
+        }
+      })
+      .catch(() => {
+        window.location.href = "/login";
+      });
+  }, []);
+
   // Presentation count for the overview card
   useEffect(() => {
     let cancelled = false;
@@ -213,9 +226,7 @@ export default function CRDashboardPage() {
     if (!result.isConfirmed) return;
 
     try {
-      localStorage.removeItem("userRole");
-      localStorage.removeItem("userEmail");
-      localStorage.removeItem("isLoggedIn");
+      await logoutUser();
       window.dispatchEvent(new Event("auth-change"));
 
       await Swal.fire({
