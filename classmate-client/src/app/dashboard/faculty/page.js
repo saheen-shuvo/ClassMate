@@ -1,4 +1,4 @@
-/* eslint-disable react-hooks/set-state-in-effect */
+﻿/* eslint-disable react-hooks/set-state-in-effect */
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
@@ -29,6 +29,7 @@ import {
   Home,
 } from "lucide-react";
 import PresentationComponent from "@/components/crDashboard/Presentation";
+import MiniAcademicCalendar from "@/components/faculty/MiniAcademicCalendar";
 import Swal from "sweetalert2";
 import { getCurrentUser, logoutUser, dashboardForRole } from "@/lib/auth";
 
@@ -253,6 +254,7 @@ export default function FacultyDashboardPage() {
       title: "WORKSPACE",
       items: [
         { id: "overview", label: "Overview", icon: LayoutDashboard },
+        { id: "calendar", label: "Academic Calendar", icon: CalendarDays },
       ],
     },
     {
@@ -268,6 +270,7 @@ export default function FacultyDashboardPage() {
 
   const pageTitles = {
     overview: "Dashboard Overview",
+    calendar: "Mini Academic Calendar",
     notes: "Course Notes",
     announcements: "Announcements",
     presentations: "Presentation Topics",
@@ -488,7 +491,7 @@ export default function FacultyDashboardPage() {
 
           {!sidebarCollapsed && (
             <p className="mt-4 text-center text-[10px] text-slate-400">
-              ClassMate © 2026
+              ClassMate Â© 2026
             </p>
           )}
         </div>
@@ -766,7 +769,7 @@ export default function FacultyDashboardPage() {
                                 {note.title}
                               </h4>
                               <p className="mt-1 text-[10px] text-slate-400">
-                                {note.course} · {note.date}
+                                {note.course} Â· {note.date}
                               </p>
                             </div>
                           </div>
@@ -913,7 +916,7 @@ export default function FacultyDashboardPage() {
                     </h3>
 
                     <p className="mt-2 text-xs text-slate-500">
-                      {note.course} · {note.date}
+                      {note.course} Â· {note.date}
                     </p>
 
                     <div className="mt-5 flex items-center justify-between border-t border-slate-100 pt-4">
@@ -1020,6 +1023,9 @@ export default function FacultyDashboardPage() {
               </div>
             </section>
           )}
+
+          {/* Mini Academic Calendar */}
+          {activePage === "calendar" && <MiniAcademicCalendar />}
 
           {/* Presentations */}
           {activePage === "presentations" && <PresentationComponent />}
@@ -1187,3 +1193,4 @@ export default function FacultyDashboardPage() {
     </div>
   );
 }
+
