@@ -12,7 +12,6 @@ import {
   Pencil,
   Trash2,
   X,
-  BookOpen,
   Award,
   FileText,
 } from "lucide-react";
@@ -56,7 +55,10 @@ function formatDate(date) {
   });
 }
 
-export default function AssignmentManagement() {
+export default function AssignmentManagement({
+  openCreateOnMount = false,
+  onCreateModalHandled,
+}) {
   const [assignments, setAssignments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -96,9 +98,20 @@ export default function AssignmentManagement() {
     fetchAssignments();
   }, [fetchAssignments]);
 
+  // Automatically open Create Assignment modal from Quick Actions
+  useEffect(() => {
+    if (!openCreateOnMount) return;
+
+    setEditingId(null);
+    setForm({ ...INITIAL_FORM });
+    setModalOpen(true);
+
+    onCreateModalHandled?.();
+  }, [openCreateOnMount, onCreateModalHandled]);
+
   const openCreateModal = () => {
     setEditingId(null);
-    setForm(INITIAL_FORM);
+    setForm({ ...INITIAL_FORM });
     setModalOpen(true);
   };
 
@@ -178,7 +191,7 @@ export default function AssignmentManagement() {
       }
 
       setModalOpen(false);
-      setForm(INITIAL_FORM);
+      setForm({ ...INITIAL_FORM });
       setEditingId(null);
 
       await fetchAssignments();
