@@ -1,7 +1,7 @@
 /* eslint-disable react-hooks/set-state-in-effect */
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
   LayoutDashboard,
@@ -22,7 +22,7 @@ import {
   Clock,
   Trash2,
   Sparkles,
-  MoreHorizontal,
+  Pencil,
   Upload,
   Megaphone,
   PanelLeftClose,
@@ -33,6 +33,12 @@ import Swal from "sweetalert2";
 import PresentationComponent from "@/components/crDashboard/Presentation";
 import { getPresentationCourses } from "@/lib/presentationStorage";
 import { getCurrentUser, logoutUser, dashboardForRole } from "@/lib/auth";
+import {
+  createAnnouncement,
+  deleteAnnouncement,
+  getAnnouncements,
+  updateAnnouncement,
+} from "@/lib/announcementStorage";
 
 const PAGE_TITLES = {
   overview: "Dashboard Overview",
@@ -86,13 +92,35 @@ const EMPTY_FORM = {
   priority: "Medium",
 };
 
+const formatAnnouncement = (announcement) => {
+  const createdAt = announcement.createdAt ? new Date(announcement.createdAt) : null;
+  const date =
+    createdAt && !Number.isNaN(createdAt.getTime())
+      ? createdAt.toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" })
+      : "Date unavailable";
+
+  return {
+    ...announcement,
+    id: String(announcement._id),
+    date,
+  };
+};
+
 export default function CRDashboardPage() {
   const [activePage, setActivePage] = useState("overview");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [modal, setModal] = useState(null); // "notes" | "announcements" | null
+  const [editingAnnouncement, setEditingAnnouncement] = useState(null);
   const [form, setForm] = useState(EMPTY_FORM);
   const [toast, setToast] = useState("");
+  const [toastType, setToastType] = useState("success");
+  const [announcementLoading, setAnnouncementLoading] = useState(true);
+  const [announcementError, setAnnouncementError] = useState("");
+  const [announcementSubmitting, setAnnouncementSubmitting] = useState(false);
+  const [deletingAnnouncementId, setDeletingAnnouncementId] = useState(null);
+  const [crId, setCrId] = useState("");
+  const announcementRequestRef = useRef(false);
   const [presentationCount, setPresentationCount] = useState(0);
   const [crName, setCrName] = useState("CR");
 
@@ -102,32 +130,7 @@ export default function CRDashboardPage() {
     { id: 3, title: "Database Management Systems", course: "CSE 331", date: "Nov 02, 2026", size: "3.1 MB" },
   ]);
 
-  const [announcements, setAnnouncements] = useState([
-    {
-      id: 1,
-      title: "Final Examination Schedule",
-      description: "The final examination routine will be published next week. Stay updated.",
-      priority: "High",
-      date: "Today",
-      course: "CSE 412",
-    },
-    {
-      id: 2,
-      title: "Assignment Submission Reminder",
-      description: "Please submit your database assignment before the deadline.",
-      priority: "Medium",
-      date: "Yesterday",
-      course: "CSE 331",
-    },
-    {
-      id: 3,
-      title: "Classroom Change Notice",
-      description: "Tomorrow's lecture will take place in room 504.",
-      priority: "Low",
-      date: "Nov 03",
-      course: "CSE 321",
-    },
-  ]);
+  const [announcements, setAnnouncements] = useState([]);
 
   // Restore the active tab from the URL hash (so "Back" from the details page lands on Presentations)
   useEffect(() => {
@@ -143,10 +146,34 @@ export default function CRDashboardPage() {
           return;
         }
         setCrName(data.user.name || "CR");
+        setCrId(data.user._id);
       })
       .catch(() => {
         window.location.href = "/login";
       });
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    getAnnouncements()
+      .then((data) => {
+        if (cancelled) return;
+        if (!Array.isArray(data)) throw new Error("Unexpected announcements response.");
+        setAnnouncements(data.map(formatAnnouncement));
+        setAnnouncementError("");
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        console.error("Fetch announcements error:", error);
+        setAnnouncementError(error.message || "Failed to load announcements.");
+      })
+      .finally(() => {
+        if (!cancelled) setAnnouncementLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // Presentation count for the overview card
@@ -168,17 +195,30 @@ export default function CRDashboardPage() {
     window.history.replaceState(null, "", `#${page}`);
   };
 
-  const showToast = (message) => {
+  const showToast = (message, type = "success") => {
     setToast(message);
+    setToastType(type);
     setTimeout(() => setToast(""), 3000);
   };
 
   const openModal = (type) => {
     setForm(EMPTY_FORM);
+    setEditingAnnouncement(null);
     setModal(type);
   };
 
-  const handleSubmit = (e) => {
+  const openAnnouncementForEdit = (announcement) => {
+    setEditingAnnouncement(announcement);
+    setForm({
+      title: announcement.title,
+      description: announcement.description,
+      course: announcement.course,
+      priority: announcement.priority,
+    });
+    setModal("announcements");
+  };
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
 
     if (modal === "notes") {
@@ -196,21 +236,77 @@ export default function CRDashboardPage() {
     }
 
     if (modal === "announcements") {
-      setAnnouncements((prev) => [
-        {
-          id: Date.now(),
-          title: form.title,
-          description: form.description,
-          priority: form.priority,
-          course: form.course,
-          date: "Just now",
-        },
-        ...prev,
-      ]);
-      showToast("Announcement published!");
+      const announcementDetails = {
+        title: form.title.trim(),
+        description: form.description.trim(),
+        course: form.course,
+        priority: form.priority,
+      };
+
+      if (!announcementDetails.title || !announcementDetails.description || !announcementDetails.course) {
+        showToast("Please complete all announcement fields.", "error");
+        return;
+      }
+
+      if (announcementRequestRef.current) return;
+      announcementRequestRef.current = true;
+      setAnnouncementSubmitting(true);
+      try {
+        const response = editingAnnouncement
+          ? await updateAnnouncement(editingAnnouncement.id, announcementDetails)
+          : await createAnnouncement(announcementDetails);
+        const savedAnnouncement = formatAnnouncement(response.announcement);
+
+        if (editingAnnouncement) {
+          setAnnouncements((previous) =>
+            previous.map((item) => (item.id === savedAnnouncement.id ? savedAnnouncement : item)),
+          );
+          showToast("Announcement updated successfully!");
+        } else {
+          setAnnouncements((previous) => [savedAnnouncement, ...previous]);
+          showToast("Announcement published successfully!");
+        }
+        setAnnouncementError("");
+        setModal(null);
+        setEditingAnnouncement(null);
+      } catch (error) {
+        console.error("Save announcement error:", error);
+        showToast(error.message || "Failed to save announcement.", "error");
+      } finally {
+        announcementRequestRef.current = false;
+        setAnnouncementSubmitting(false);
+      }
+      return;
     }
 
     setModal(null);
+  };
+
+  const handleDeleteAnnouncement = async (announcement) => {
+    const result = await Swal.fire({
+      icon: "warning",
+      title: "Delete announcement?",
+      text: "This announcement will be permanently deleted.",
+      showCancelButton: true,
+      confirmButtonText: "Yes, delete",
+      cancelButtonText: "Cancel",
+      confirmButtonColor: "#dc2626",
+      reverseButtons: true,
+    });
+
+    if (!result.isConfirmed || deletingAnnouncementId) return;
+
+    setDeletingAnnouncementId(announcement.id);
+    try {
+      await deleteAnnouncement(announcement.id);
+      setAnnouncements((previous) => previous.filter((item) => item.id !== announcement.id));
+      showToast("Announcement deleted successfully!");
+    } catch (error) {
+      console.error("Delete announcement error:", error);
+      showToast(error.message || "Failed to delete announcement.", "error");
+    } finally {
+      setDeletingAnnouncementId(null);
+    }
   };
 
   const handleLogout = async () => {
@@ -472,7 +568,7 @@ export default function CRDashboardPage() {
         <main className="mx-auto max-w-[1600px] space-y-7 p-4 sm:p-6 lg:p-8">
           {/* Toast */}
           {toast && (
-            <div className="flex items-center justify-between rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-xs font-semibold text-blue-700">
+            <div className={`flex items-center justify-between rounded-xl border px-4 py-3 text-xs font-semibold ${toastType === "error" ? "border-rose-100 bg-rose-50 text-rose-700" : "border-blue-100 bg-blue-50 text-blue-700"}`}>
               <span>{toast}</span>
               <button onClick={() => setToast("")} aria-label="Dismiss">
                 <X size={16} />
@@ -772,6 +868,21 @@ export default function CRDashboardPage() {
               </div>
 
               <div className="space-y-3">
+                {announcementLoading && (
+                  <p className="rounded-xl border border-slate-200 bg-white p-5 text-xs text-slate-500">
+                    Loading announcements...
+                  </p>
+                )}
+                {!announcementLoading && announcementError && (
+                  <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-5 text-xs text-rose-700">
+                    {announcementError}
+                  </p>
+                )}
+                {!announcementLoading && !announcementError && announcements.length === 0 && (
+                  <p className="rounded-xl border border-slate-200 bg-white p-5 text-xs text-slate-500">
+                    No announcements yet.
+                  </p>
+                )}
                 {announcements.map((item) => (
                   <div key={item.id} className="rounded-2xl border border-slate-200 bg-white p-5">
                     <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
@@ -792,9 +903,27 @@ export default function CRDashboardPage() {
                         </p>
                       </div>
 
-                      <button className="self-end rounded-lg p-2 text-slate-400 hover:bg-slate-100 sm:self-start">
-                        <MoreHorizontal size={18} />
-                      </button>
+                      {item.createdBy?._id === crId && item.createdBy?.role === "cr" && (
+                        <div className="flex self-end gap-1 sm:self-start">
+                          <button
+                            type="button"
+                            onClick={() => openAnnouncementForEdit(item)}
+                            aria-label={`Edit ${item.title}`}
+                            className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-blue-600"
+                          >
+                            <Pencil size={17} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteAnnouncement(item)}
+                            disabled={deletingAnnouncementId === item.id}
+                            aria-label={`Delete ${item.title}`}
+                            className="rounded-lg p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50"
+                          >
+                            <Trash2 size={17} />
+                          </button>
+                        </div>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -838,7 +967,7 @@ export default function CRDashboardPage() {
             <div className="mb-6 flex items-center justify-between">
               <div>
                 <h2 className="text-base font-bold text-slate-900">
-                  {modal === "notes" ? "Upload Course Note" : "Create Announcement"}
+                  {modal === "notes" ? "Upload Course Note" : editingAnnouncement ? "Edit Announcement" : "Create Announcement"}
                 </h2>
                 <p className="mt-1 text-xs text-slate-500">Fill in the information below.</p>
               </div>
@@ -896,6 +1025,7 @@ export default function CRDashboardPage() {
                 <label className="mb-1.5 block text-xs font-semibold text-slate-700">Description</label>
                 <textarea
                   rows={4}
+                  required={modal === "announcements"}
                   value={form.description}
                   onChange={(e) => setForm({ ...form, description: e.target.value })}
                   placeholder="Write a short description..."
@@ -907,15 +1037,23 @@ export default function CRDashboardPage() {
                 <button
                   type="button"
                   onClick={() => setModal(null)}
+                  disabled={announcementSubmitting}
                   className="rounded-xl border border-slate-200 px-4 py-2.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
+                  disabled={modal === "announcements" && announcementSubmitting}
                   className="rounded-xl bg-blue-600 px-5 py-2.5 text-xs font-bold text-white transition hover:bg-blue-700"
                 >
-                  {modal === "notes" ? "Add Note" : "Publish Announcement"}
+                  {modal === "notes"
+                    ? "Add Note"
+                    : announcementSubmitting
+                      ? "Saving..."
+                      : editingAnnouncement
+                        ? "Save Changes"
+                        : "Publish Announcement"}
                 </button>
               </div>
             </form>
