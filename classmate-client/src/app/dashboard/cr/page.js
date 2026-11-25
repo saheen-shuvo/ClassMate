@@ -23,6 +23,8 @@ import {
   Trash2,
   Sparkles,
   Pencil,
+  Download,
+  ExternalLink,
   Upload,
   Megaphone,
   PanelLeftClose,
@@ -39,6 +41,13 @@ import {
   getAnnouncements,
   updateAnnouncement,
 } from "@/lib/announcementStorage";
+import {
+  createCourseNote,
+  deleteCourseNote,
+  getCourseNoteFileUrl,
+  getCourseNotes,
+  updateCourseNote,
+} from "@/lib/courseNoteStorage";
 
 const PAGE_TITLES = {
   overview: "Dashboard Overview",
@@ -92,6 +101,27 @@ const EMPTY_FORM = {
   priority: "Medium",
 };
 
+const MAX_NOTE_FILE_SIZE = 15 * 1024 * 1024;
+
+const formatCourseNote = (note) => {
+  const createdAt = note.createdAt ? new Date(note.createdAt) : null;
+  const fileSize = Number(note.fileSize || 0);
+  const date =
+    createdAt && !Number.isNaN(createdAt.getTime())
+      ? createdAt.toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" })
+      : "Date unavailable";
+
+  return {
+    ...note,
+    id: String(note.id || note._id),
+    date,
+    size:
+      fileSize < 1024 * 1024
+        ? `${Math.max(1, Math.round(fileSize / 1024))} KB`
+        : `${(fileSize / (1024 * 1024)).toFixed(1)} MB`,
+  };
+};
+
 const formatAnnouncement = (announcement) => {
   const createdAt = announcement.createdAt ? new Date(announcement.createdAt) : null;
   const date =
@@ -111,8 +141,14 @@ export default function CRDashboardPage() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [modal, setModal] = useState(null); // "notes" | "announcements" | null
+  const [editingNote, setEditingNote] = useState(null);
   const [editingAnnouncement, setEditingAnnouncement] = useState(null);
   const [form, setForm] = useState(EMPTY_FORM);
+  const [selectedNoteFile, setSelectedNoteFile] = useState(null);
+  const [noteLoading, setNoteLoading] = useState(true);
+  const [noteError, setNoteError] = useState("");
+  const [noteSubmitting, setNoteSubmitting] = useState(false);
+  const [deletingNoteId, setDeletingNoteId] = useState(null);
   const [toast, setToast] = useState("");
   const [toastType, setToastType] = useState("success");
   const [announcementLoading, setAnnouncementLoading] = useState(true);
@@ -120,15 +156,13 @@ export default function CRDashboardPage() {
   const [announcementSubmitting, setAnnouncementSubmitting] = useState(false);
   const [deletingAnnouncementId, setDeletingAnnouncementId] = useState(null);
   const [crId, setCrId] = useState("");
+  const noteRequestRef = useRef(false);
   const announcementRequestRef = useRef(false);
+  const noteFileInputRef = useRef(null);
   const [presentationCount, setPresentationCount] = useState(0);
   const [crName, setCrName] = useState("CR");
 
-  const [notes, setNotes] = useState([
-    { id: 1, title: "Introduction to Machine Learning", course: "CSE 412", date: "Nov 05, 2026", size: "2.4 MB" },
-    { id: 2, title: "Operating System - Process Management", course: "CSE 321", date: "Nov 04, 2026", size: "1.8 MB" },
-    { id: 3, title: "Database Management Systems", course: "CSE 331", date: "Nov 02, 2026", size: "3.1 MB" },
-  ]);
+  const [notes, setNotes] = useState([]);
 
   const [announcements, setAnnouncements] = useState([]);
 
@@ -152,6 +186,33 @@ export default function CRDashboardPage() {
         window.location.href = "/login";
       });
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    getCourseNotes()
+      .then((data) => {
+        if (cancelled) return;
+        if (!Array.isArray(data)) throw new Error("Unexpected course notes response.");
+        setNotes(data.map(formatCourseNote));
+        setNoteError("");
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        console.error("Fetch course notes error:", error);
+        setNoteError(error.message || "Failed to load course notes.");
+      })
+      .finally(() => {
+        if (!cancelled) setNoteLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (noteFileInputRef.current) noteFileInputRef.current.value = "";
+  }, [modal, editingNote]);
 
   useEffect(() => {
     let cancelled = false;
@@ -203,8 +264,104 @@ export default function CRDashboardPage() {
 
   const openModal = (type) => {
     setForm(EMPTY_FORM);
+    setEditingNote(null);
     setEditingAnnouncement(null);
+    setSelectedNoteFile(null);
     setModal(type);
+  };
+
+  const closeModal = () => {
+    if (noteSubmitting || announcementSubmitting) return;
+    setModal(null);
+    setEditingNote(null);
+    setEditingAnnouncement(null);
+    setSelectedNoteFile(null);
+  };
+
+  const openCourseNoteForEdit = (note) => {
+    setEditingNote(note);
+    setEditingAnnouncement(null);
+    setSelectedNoteFile(null);
+    setForm({
+      ...EMPTY_FORM,
+      title: note.title,
+      description: note.description || "",
+      course: note.course,
+    });
+    setModal("notes");
+  };
+
+  const handleNoteFileChange = (event) => {
+    const file = event.target.files?.[0] || null;
+    if (!file) {
+      setSelectedNoteFile(null);
+      return;
+    }
+
+    const validType =
+      file.name.toLowerCase().endsWith(".pdf") &&
+      (!file.type || file.type === "application/pdf");
+    if (!validType) {
+      setSelectedNoteFile(null);
+      event.target.value = "";
+      showToast("Choose a PDF file.", "error");
+      return;
+    }
+    if (file.size > MAX_NOTE_FILE_SIZE) {
+      setSelectedNoteFile(null);
+      event.target.value = "";
+      showToast("PDF files must be 15 MB or smaller.", "error");
+      return;
+    }
+
+    setSelectedNoteFile(file);
+  };
+
+  const submitCourseNote = async () => {
+    const details = {
+      title: form.title.trim(),
+      description: form.description.trim(),
+      course: form.course,
+    };
+
+    if (!details.title || !details.course) {
+      showToast("Please provide a note title and course.", "error");
+      return;
+    }
+    if (!editingNote && !selectedNoteFile) {
+      showToast("Choose a PDF file to upload.", "error");
+      return;
+    }
+    if (noteRequestRef.current) return;
+
+    noteRequestRef.current = true;
+    setNoteSubmitting(true);
+    try {
+      const response = editingNote
+        ? await updateCourseNote(editingNote.id, details, selectedNoteFile)
+        : await createCourseNote(details, selectedNoteFile);
+      const savedNote = formatCourseNote(response.note);
+
+      if (editingNote) {
+        setNotes((previous) =>
+          previous.map((note) => (note.id === savedNote.id ? savedNote : note)),
+        );
+        showToast(response.warning || "Course note updated successfully.", response.warning ? "error" : "success");
+      } else {
+        setNotes((previous) => [savedNote, ...previous]);
+        showToast("Course note uploaded successfully!");
+      }
+      setNoteError("");
+      setModal(null);
+      setEditingNote(null);
+      setSelectedNoteFile(null);
+    } catch (error) {
+      console.error("Save course note error:", error);
+      showToast(error.message || "Failed to save course note.", "error");
+    } finally {
+      noteRequestRef.current = false;
+      setNoteSubmitting(false);
+    }
   };
 
   const openAnnouncementForEdit = (announcement) => {
@@ -222,17 +379,8 @@ export default function CRDashboardPage() {
     e.preventDefault();
 
     if (modal === "notes") {
-      setNotes((prev) => [
-        {
-          id: Date.now(),
-          title: form.title,
-          course: form.course,
-          date: new Date().toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" }),
-          size: "Pending upload",
-        },
-        ...prev,
-      ]);
-      showToast("Note added successfully!");
+      await submitCourseNote();
+      return;
     }
 
     if (modal === "announcements") {
@@ -280,6 +428,33 @@ export default function CRDashboardPage() {
     }
 
     setModal(null);
+  };
+
+  const handleDeleteCourseNote = async (note) => {
+    const result = await Swal.fire({
+      icon: "warning",
+      title: "Delete course note?",
+      text: "The note and its PDF will be permanently deleted.",
+      showCancelButton: true,
+      confirmButtonText: "Yes, delete",
+      cancelButtonText: "Cancel",
+      confirmButtonColor: "#dc2626",
+      reverseButtons: true,
+    });
+
+    if (!result.isConfirmed || deletingNoteId) return;
+
+    setDeletingNoteId(note.id);
+    try {
+      const response = await deleteCourseNote(note.id);
+      setNotes((previous) => previous.filter((item) => item.id !== note.id));
+      showToast(response.warning || "Course note deleted successfully.", response.warning ? "error" : "success");
+    } catch (error) {
+      console.error("Delete course note error:", error);
+      showToast(error.message || "Failed to delete course note.", "error");
+    } finally {
+      setDeletingNoteId(null);
+    }
   };
 
   const handleDeleteAnnouncement = async (announcement) => {
@@ -808,44 +983,90 @@ export default function CRDashboardPage() {
                 </button>
               </div>
 
-              {notes.length === 0 ? (
+              {noteLoading ? (
+                <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center text-xs text-slate-500">
+                  Loading course notes...
+                </div>
+              ) : noteError ? (
+                <div role="alert" className="rounded-2xl border border-rose-200 bg-rose-50 p-5 text-xs text-rose-700">
+                  {noteError}
+                </div>
+              ) : notes.length === 0 ? (
                 <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-10 text-center text-xs text-slate-500">
                   No notes yet. Upload your first note.
                 </div>
               ) : (
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                  {notes.map((note) => (
-                    <div
-                      key={note.id}
-                      className="rounded-2xl border border-slate-200 bg-white p-5 transition hover:border-blue-200 hover:shadow-sm"
-                    >
-                      <div className="flex items-start justify-between">
-                        <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
-                          <FileText size={21} />
+                  {notes.map((note) => {
+                    const canManageNote =
+                      note.uploadedBy?._id === crId && note.uploadedBy?.role === "cr";
+
+                    return (
+                      <div
+                        key={note.id}
+                        className="rounded-2xl border border-slate-200 bg-white p-5 transition hover:border-blue-200 hover:shadow-sm"
+                      >
+                        <div className="flex items-start justify-between">
+                          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
+                            <FileText size={21} />
+                          </div>
+                          {canManageNote && (
+                            <div className="flex gap-1">
+                              <button
+                                type="button"
+                                onClick={() => openCourseNoteForEdit(note)}
+                                aria-label={`Edit ${note.title}`}
+                                className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-blue-600"
+                              >
+                                <Pencil size={17} />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteCourseNote(note)}
+                                disabled={deletingNoteId === note.id}
+                                aria-label={`Delete ${note.title}`}
+                                className="rounded-lg p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50"
+                              >
+                                <Trash2 size={17} />
+                              </button>
+                            </div>
+                          )}
                         </div>
-                        <button
-                          onClick={() => {
-                            setNotes((prev) => prev.filter((item) => item.id !== note.id));
-                            showToast("Note removed.");
-                          }}
-                          className="rounded-lg p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-600"
-                          title="Delete note"
-                        >
-                          <Trash2 size={17} />
-                        </button>
-                      </div>
 
-                      <h3 className="mt-4 text-sm font-bold text-slate-900">{note.title}</h3>
-                      <p className="mt-2 text-xs text-slate-500">
-                        {note.course} · {note.date}
-                      </p>
+                        <h3 className="mt-4 text-sm font-bold text-slate-900">{note.title}</h3>
+                        <p className="mt-2 text-xs text-slate-500">
+                          {note.course} · {note.date}
+                        </p>
+                        {note.description && (
+                          <p className="mt-2 text-xs leading-relaxed text-slate-500">{note.description}</p>
+                        )}
+                        <p className="mt-3 truncate text-[11px] text-slate-400" title={note.originalFileName}>
+                          {note.originalFileName}
+                        </p>
 
-                      <div className="mt-5 flex items-center justify-between border-t border-slate-100 pt-4">
-                        <span className="text-[11px] text-slate-400">{note.size}</span>
-                        <span className="rounded-md bg-rose-50 px-2 py-1 text-[10px] font-bold text-rose-600">PDF</span>
+                        <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-4">
+                          <span className="text-[11px] text-slate-400">{note.size}</span>
+                          <span className="rounded-md bg-rose-50 px-2 py-1 text-[10px] font-bold text-rose-600">PDF</span>
+                        </div>
+                        <div className="mt-4 flex gap-2">
+                          <a
+                            href={getCourseNoteFileUrl(note.id)}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center gap-1.5 rounded-lg bg-blue-50 px-3 py-2 text-[11px] font-semibold text-blue-700 hover:bg-blue-100"
+                          >
+                            <ExternalLink size={14} /> Open PDF
+                          </a>
+                          <a
+                            href={getCourseNoteFileUrl(note.id, true)}
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-[11px] font-semibold text-slate-600 hover:bg-slate-50"
+                          >
+                            <Download size={14} /> Download
+                          </a>
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </section>
@@ -960,26 +1181,38 @@ export default function CRDashboardPage() {
         <div
           className="fixed inset-0 z-70 flex items-center justify-center overflow-y-auto bg-slate-950/40 p-4 backdrop-blur-[2px]"
           onMouseDown={(e) => {
-            if (e.target === e.currentTarget) setModal(null);
+            if (e.target === e.currentTarget) closeModal();
           }}
         >
           <div className="my-auto w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl">
             <div className="mb-6 flex items-center justify-between">
               <div>
                 <h2 className="text-base font-bold text-slate-900">
-                  {modal === "notes" ? "Upload Course Note" : editingAnnouncement ? "Edit Announcement" : "Create Announcement"}
+                  {modal === "notes"
+                    ? editingNote
+                      ? "Edit Course Note"
+                      : "Upload Course Note"
+                    : editingAnnouncement
+                      ? "Edit Announcement"
+                      : "Create Announcement"}
                 </h2>
                 <p className="mt-1 text-xs text-slate-500">Fill in the information below.</p>
               </div>
-              <button onClick={() => setModal(null)} className="rounded-lg p-2 text-slate-400 hover:bg-slate-100">
+              <button
+                type="button"
+                onClick={closeModal}
+                disabled={noteSubmitting || announcementSubmitting}
+                className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 disabled:opacity-50"
+              >
                 <X size={19} />
               </button>
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label className="mb-1.5 block text-xs font-semibold text-slate-700">Target Course</label>
+                <label className="mb-1.5 block text-xs font-semibold text-slate-700">Course</label>
                 <select
+                  required
                   value={form.course}
                   onChange={(e) => setForm({ ...form, course: e.target.value })}
                   className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
@@ -1033,22 +1266,49 @@ export default function CRDashboardPage() {
                 />
               </div>
 
+              {modal === "notes" && (
+                <div>
+                  <label className="mb-1.5 block text-xs font-semibold text-slate-700">
+                    PDF File {editingNote ? "(optional replacement)" : ""}
+                  </label>
+                  <input
+                    ref={noteFileInputRef}
+                    type="file"
+                    accept=".pdf,application/pdf"
+                    required={!editingNote}
+                    onChange={handleNoteFileChange}
+                    className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-xs outline-none file:mr-3 file:rounded-lg file:border-0 file:bg-blue-50 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-blue-700"
+                  />
+                  <p className="mt-1.5 text-[11px] text-slate-400">
+                    {selectedNoteFile
+                      ? `Selected: ${selectedNoteFile.name}`
+                      : editingNote
+                        ? `Current PDF: ${editingNote.originalFileName}`
+                        : "PDF only, up to 15 MB."}
+                  </p>
+                </div>
+              )}
+
               <div className="flex justify-end gap-2 border-t border-slate-100 pt-4">
                 <button
                   type="button"
-                  onClick={() => setModal(null)}
-                  disabled={announcementSubmitting}
+                  onClick={closeModal}
+                  disabled={noteSubmitting || announcementSubmitting}
                   className="rounded-xl border border-slate-200 px-4 py-2.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  disabled={modal === "announcements" && announcementSubmitting}
-                  className="rounded-xl bg-blue-600 px-5 py-2.5 text-xs font-bold text-white transition hover:bg-blue-700"
+                  disabled={modal === "notes" ? noteSubmitting : announcementSubmitting}
+                  className="rounded-xl bg-blue-600 px-5 py-2.5 text-xs font-bold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {modal === "notes"
-                    ? "Add Note"
+                    ? noteSubmitting
+                      ? "Uploading..."
+                      : editingNote
+                        ? "Save Changes"
+                        : "Upload Note"
                     : announcementSubmitting
                       ? "Saving..."
                       : editingAnnouncement

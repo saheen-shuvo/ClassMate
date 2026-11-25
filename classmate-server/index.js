@@ -9,6 +9,7 @@ const presentationRoutes = require("./routes/presentationRoutes");
 const assignmentRoutes = require("./routes/assignmentRoutes");
 const authRoutes = require("./routes/authRoutes");
 const announcementRoutes = require("./routes/announcementRoutes");
+const courseNoteRoutes = require("./routes/courseNoteRoutes");
 const adminRoutes = require("./routes/adminRoutes");
 
 
@@ -72,6 +73,7 @@ app.use("/api/assignments", assignmentRoutes);
 app.use("/api/presentations", presentationRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/announcements", announcementRoutes);
+app.use("/api/course-notes", courseNoteRoutes);
 app.use("/api/admin", adminRoutes);
 
 app.get("/", (req, res) => {
