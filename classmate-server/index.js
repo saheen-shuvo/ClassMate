@@ -11,6 +11,8 @@ const authRoutes = require("./routes/authRoutes");
 const announcementRoutes = require("./routes/announcementRoutes");
 const courseNoteRoutes = require("./routes/courseNoteRoutes");
 const adminRoutes = require("./routes/adminRoutes");
+const courseRoutes = require("./routes/courseRoutes");
+const { ensureCourseIndexes } = require("./controllers/courseController");
 
 
 const app = express();
@@ -75,6 +77,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/announcements", announcementRoutes);
 app.use("/api/course-notes", courseNoteRoutes);
 app.use("/api/admin", adminRoutes);
+app.use("/api/courses", courseRoutes);
 
 app.get("/", (req, res) => {
   res.send("Express server is running!");
@@ -100,6 +103,7 @@ app.get("/test-db", async (req, res) => {
 
 const startServer = async () => {
   await connectDB();
+  await ensureCourseIndexes();
 
   const PORT = process.env.PORT || 5001;
 

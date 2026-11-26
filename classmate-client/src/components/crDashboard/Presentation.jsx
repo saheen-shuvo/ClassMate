@@ -25,10 +25,11 @@ import {
   createPresentationCourse,
   deletePresentationCourse,
 } from "@/lib/presentationStorage";
-import { presentationStudents } from "@/lib/presentationStudents";
+import { getCourses } from "@/lib/courseStorage";
+import { presentationStudents as legacyPresentationStudents } from "@/lib/presentationStudents";
 
 const EMPTY_FORM = {
-  courseName: "",
+  courseId: "",
   teammates: "5",
   submissionDeadline: "",
   presentationDate: "",
@@ -63,6 +64,7 @@ const countByStatus = (course, status) =>
 
 export default function PresentationComponent({ dashboardPath = "/dashboard/cr" }) {
   const [courses, setCourses] = useState([]);
+  const [availableCourses, setAvailableCourses] = useState([]);
   const [showModal, setShowModal] = useState(false);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -84,8 +86,18 @@ export default function PresentationComponent({ dashboardPath = "/dashboard/cr" 
     }
   };
 
+  const loadAvailableCourses = async () => {
+    try {
+      setAvailableCourses(await getCourses({ status: "active" }));
+    } catch (err) {
+      console.error("Failed to load assigned courses:", err);
+      setError(err.message);
+    }
+  };
+
   useEffect(() => {
     loadCourses();
+    loadAvailableCourses();
   }, []);
 
   /* ───── Form helpers ───── */
@@ -121,7 +133,7 @@ export default function PresentationComponent({ dashboardPath = "/dashboard/cr" 
     const maxStudentsPerTopic = Number(form.maxStudentsPerTopic);
     const maxTopicsPerStudent = Number(form.maxTopicsPerStudent);
 
-    if (!form.courseName.trim()) return setError("Please enter a course name.");
+    if (!form.courseId) return setError("Please select an assigned course.");
     if (!Number.isInteger(teammates) || teammates < 1 || teammates > 20)
       return setError("Teammates must be a whole number between 1 and 20.");
     if (!form.submissionDeadline) return setError("Please select a submission deadline.");
@@ -142,7 +154,7 @@ export default function PresentationComponent({ dashboardPath = "/dashboard/cr" 
       setSubmitting(true);
 
       await createPresentationCourse({
-        courseName: form.courseName.trim(),
+        courseId: form.courseId,
         teammates,
         submissionDeadline: form.submissionDeadline,
         presentationDate: form.presentationDate,
@@ -233,7 +245,8 @@ export default function PresentationComponent({ dashboardPath = "/dashboard/cr" 
   ];
 
   const previewGroups = Math.ceil(
-    presentationStudents.length / Math.max(1, Number(form.teammates) || 1),
+    (availableCourses.find((course) => course._id === form.courseId)?.enrollmentCount || 0) /
+      Math.max(1, Number(form.teammates) || 1),
   );
 
   /* ───── Render ───── */
@@ -329,11 +342,17 @@ export default function PresentationComponent({ dashboardPath = "/dashboard/cr" 
             <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
               {filteredCourses.map((course) => {
                 const total = course.topics.length;
-                const returnToAdmin = dashboardPath === "/dashboard/admin";
-                const detailsHref = `/dashboard/cr/presentations/${encodeURIComponent(course._id)}${returnToAdmin ? "?returnTo=admin" : ""}`;
+                const returnTo = dashboardPath === "/dashboard/admin"
+                  ? "admin"
+                  : dashboardPath === "/dashboard/faculty"
+                    ? "faculty"
+                    : null;
+                const detailsHref = `/dashboard/cr/presentations/${encodeURIComponent(course._id)}${returnTo ? `?returnTo=${returnTo}` : ""}`;
                 const locked = countByStatus(course, "locked");
+                const studentCount = course.enrollmentCount ??
+                  (course.courseId ? 0 : legacyPresentationStudents.length);
                 const groupCount = Math.ceil(
-                  presentationStudents.length / Math.max(1, Number(course.teammates) || 1),
+                  studentCount / Math.max(1, Number(course.teammates) || 1),
                 );
 
                 return (
@@ -348,7 +367,7 @@ export default function PresentationComponent({ dashboardPath = "/dashboard/cr" 
                         </div>
                         <div className="min-w-0">
                           <h4 className="truncate font-semibold text-slate-900 transition group-hover:text-blue-700">
-                            {course.courseName}
+                            {course.courseCode ? `${course.courseCode} · ${course.courseTitle || course.courseName}` : course.courseName}
                           </h4>
                           <p className="mt-1 text-xs text-slate-500">
                             {total} presentation topics
@@ -445,13 +464,23 @@ export default function PresentationComponent({ dashboardPath = "/dashboard/cr" 
 
             <form onSubmit={handleCreateCourse} className="space-y-5 p-5">
               <div>
-                <label className="mb-2 block text-sm font-medium text-slate-700">Course Name</label>
-                <input
-                  value={form.courseName}
-                  onChange={(e) => setForm({ ...form, courseName: e.target.value })}
-                  placeholder="e.g. Machine Learning"
-                  className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                />
+                <label className="mb-2 block text-sm font-medium text-slate-700">Course</label>
+                <select
+                  value={form.courseId}
+                  onChange={(e) => setForm({ ...form, courseId: e.target.value })}
+                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                  required
+                >
+                  <option value="">Select an assigned course</option>
+                  {availableCourses.map((course) => (
+                    <option key={course._id} value={course._id}>
+                      {course.courseCode} · {course.title}
+                    </option>
+                  ))}
+                </select>
+                {availableCourses.length === 0 && (
+                  <p className="mt-1.5 text-xs text-amber-700">No active assigned courses are available for presentations.</p>
+                )}
               </div>
 
               <div>
@@ -465,7 +494,7 @@ export default function PresentationComponent({ dashboardPath = "/dashboard/cr" 
                   className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                 />
                 <p className="mt-1.5 text-xs text-slate-400">
-                  {presentationStudents.length} students → {previewGroups} groups, each with one team leader.
+                  {availableCourses.find((course) => course._id === form.courseId)?.enrollmentCount || 0} enrolled students → {previewGroups} groups, each with one team leader.
                 </p>
               </div>
 

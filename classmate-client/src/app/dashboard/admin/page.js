@@ -30,6 +30,7 @@ import Swal from "sweetalert2";
 import AcademicCalendar from "@/components/shared/AcademicCalendar";
 import CourseNotesLibrary from "@/components/shared/CourseNotesLibrary";
 import AnnouncementManagement from "@/components/admin/AnnouncementManagement";
+import CourseManagement from "@/components/admin/CourseManagement";
 import AssignmentManagement from "@/components/faculty/AssignmentManagement";
 import PresentationComponent from "@/components/crDashboard/Presentation";
 import {
@@ -103,7 +104,7 @@ export default function AdminDashboardPage() {
       .catch(() => { window.location.href = "/login"; });
 
     const hash = window.location.hash.replace("#", "");
-    if (["overview", "calendar", "users", "students", "faculty", "cr", "announcements", "assignments", "notes", "presentations", "profile"].includes(hash))
+    if (["overview", "calendar", "courses", "users", "students", "faculty", "cr", "announcements", "assignments", "notes", "presentations", "profile"].includes(hash))
       setActivePage(hash);
   }, []);
 
@@ -219,6 +220,7 @@ export default function AdminDashboardPage() {
     { title: "WORKSPACE", items: [
       { id: "overview", label: "Overview", icon: LayoutDashboard },
       { id: "calendar", label: "Academic Calendar", icon: CalendarDays },
+      { id: "courses", label: "Course Management", icon: BookOpen },
     ] },
     { title: "ADMINISTRATION", items: [
       { id: "users", label: "User Management", icon: Users },
@@ -244,6 +246,7 @@ export default function AdminDashboardPage() {
   ];
 
   const academicCards = [
+    { title: "Courses", value: overview?.counts?.courses, icon: BookOpen, color: "blue" },
     { title: "Announcements", value: overview?.counts?.announcements, icon: Bell, color: "amber" },
     { title: "Assignments", value: overview?.counts?.assignments, icon: ClipboardList, color: "blue" },
     { title: "Presentation Groups", value: overview?.counts?.presentations, icon: Presentation, color: "indigo" },
@@ -313,6 +316,7 @@ export default function AdminDashboardPage() {
           </>}
 
           {activePage === "calendar" && <AcademicCalendar role="admin" />}
+          {activePage === "courses" && <CourseManagement users={users} />}
           {activePage === "announcements" && <AnnouncementManagement />}
           {activePage === "assignments" && <AssignmentManagement />}
           {activePage === "notes" && <CourseNotesLibrary canManage />}

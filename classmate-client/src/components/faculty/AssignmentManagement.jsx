@@ -16,21 +16,15 @@ import {
   FileText,
 } from "lucide-react";
 import Swal from "sweetalert2";
+import { getCourses } from "@/lib/courseStorage";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5001";
-
-const COURSES = [
-  { value: "CSE 412", label: "CSE 412 - Machine Learning" },
-  { value: "CSE 321", label: "CSE 321 - Operating Systems" },
-  { value: "CSE 331", label: "CSE 331 - Database Systems" },
-  { value: "CSE 421", label: "CSE 421 - Cloud Computing" },
-];
 
 const INITIAL_FORM = {
   title: "",
   description: "",
   instructions: "",
-  course: "CSE 412",
+  courseId: "",
   dueDate: "",
   totalMarks: "100",
 };
@@ -60,6 +54,8 @@ export default function AssignmentManagement({
   onCreateModalHandled,
 }) {
   const [assignments, setAssignments] = useState([]);
+  const [courses, setCourses] = useState([]);
+  const [courseError, setCourseError] = useState("");
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [modalOpen, setModalOpen] = useState(openCreateOnMount);
@@ -95,9 +91,26 @@ export default function AssignmentManagement({
     }
   }, []);
 
+  const fetchCourses = useCallback(async () => {
+    try {
+      const data = await getCourses();
+      if (!Array.isArray(data)) throw new Error("Unexpected courses response.");
+      setCourses(data.filter((course) => course.status === "active"));
+      setCourseError("");
+    } catch (error) {
+      console.error("Fetch assignment courses error:", error);
+      setCourseError(error.message || "Failed to load assigned courses.");
+      setCourses([]);
+    }
+  }, []);
+
   useEffect(() => {
     void Promise.resolve().then(fetchAssignments);
   }, [fetchAssignments]);
+
+  useEffect(() => {
+    void Promise.resolve().then(fetchCourses);
+  }, [fetchCourses]);
 
   // Automatically open Create Assignment modal from Quick Actions
   useEffect(() => {
@@ -122,12 +135,16 @@ export default function AssignmentManagement({
       .toISOString()
       .slice(0, 16);
 
+    const matchedCourse = courses.find((course) =>
+      course._id === assignment.courseId ||
+      course.courseCode.toLowerCase() === String(assignment.course || "").toLowerCase()
+    );
     setEditingId(assignment._id);
     setForm({
       title: assignment.title || "",
       description: assignment.description || "",
       instructions: assignment.instructions || "",
-      course: assignment.course || "CSE 412",
+      courseId: matchedCourse?._id || "",
       dueDate: localDate,
       totalMarks: String(assignment.totalMarks ?? 100),
     });
@@ -140,6 +157,7 @@ export default function AssignmentManagement({
     if (
       !form.title.trim() ||
       !form.description.trim() ||
+      !form.courseId ||
       !form.dueDate ||
       !form.totalMarks
     ) {
@@ -266,10 +284,11 @@ export default function AssignmentManagement({
     const matchesSearch =
       assignment.title?.toLowerCase().includes(keyword) ||
       assignment.description?.toLowerCase().includes(keyword) ||
-      assignment.course?.toLowerCase().includes(keyword);
+      assignment.course?.toLowerCase().includes(keyword) ||
+      assignment.courseTitle?.toLowerCase().includes(keyword);
 
     const matchesCourse =
-      courseFilter === "All" || assignment.course === courseFilter;
+    courseFilter === "All" || assignment.course === courseFilter;
 
     const status = getDeadlineStatus(assignment.dueDate);
     const matchesStatus =
@@ -314,13 +333,25 @@ export default function AssignmentManagement({
 
           <button
             onClick={openCreateModal}
-            className="flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-bold text-white hover:bg-blue-700"
+            disabled={!courses.length}
+            className="flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-bold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <Plus size={16} />
             Create Assignment
           </button>
         </div>
       </div>
+
+      {courseError && (
+        <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700">
+          {courseError}
+        </div>
+      )}
+      {!courseError && courses.length === 0 && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+          No active courses are assigned to your account. Ask an administrator to assign a course before creating assignments.
+        </div>
+      )}
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -387,9 +418,9 @@ export default function AssignmentManagement({
               className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-xs outline-none focus:border-blue-500"
             >
               <option value="All">All Courses</option>
-              {COURSES.map((course) => (
-                <option key={course.value} value={course.value}>
-                  {course.value}
+              {courses.map((course) => (
+                <option key={course._id} value={course.courseCode}>
+                  {course.courseCode}
                 </option>
               ))}
             </select>
@@ -463,7 +494,9 @@ export default function AssignmentManagement({
                     </div>
                     <div className="min-w-0">
                       <span className="inline-flex rounded-md bg-blue-50 px-2 py-1 text-[10px] font-bold text-blue-700">
-                        {assignment.course}
+                        {assignment.courseTitle
+                          ? `${assignment.courseCode || assignment.course} - ${assignment.courseTitle}`
+                          : assignment.course}
                       </span>
                       <h3 className="mt-2 break-words text-sm font-bold text-slate-900">
                         {assignment.title}
@@ -602,15 +635,16 @@ export default function AssignmentManagement({
                 </label>
                 <select
                   required
-                  value={form.course}
+                  value={form.courseId}
                   onChange={(e) =>
-                    setForm({ ...form, course: e.target.value })
+                    setForm({ ...form, courseId: e.target.value })
                   }
                   className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-xs outline-none focus:border-blue-500"
                 >
-                  {COURSES.map((course) => (
-                    <option key={course.value} value={course.value}>
-                      {course.label}
+                  <option value="">Select an assigned course</option>
+                  {courses.map((course) => (
+                    <option key={course._id} value={course._id}>
+                      {course.courseCode} - {course.title}
                     </option>
                   ))}
                 </select>

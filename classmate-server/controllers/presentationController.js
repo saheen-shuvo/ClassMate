@@ -1,11 +1,29 @@
 const { getDB } = require("../config/db");
 const { ObjectId } = require("mongodb");
+const {
+  canManageLinkedCourse,
+  canReadLinkedCourse,
+  getLinkedCourse,
+  resourceVisibilityFilter,
+  resolveCourseForResourceWrite,
+} = require("../utils/courseAccess");
 
 const COLLECTION = "presentations";
 const assignmentLocks = new Map();
 
 const getStudentIdentity = (req) => {
   return req.user?.email?.trim().toLowerCase() || null;
+};
+
+const presentationAccessError = async (db, presentation, user, canManage = false) => {
+  if (!presentation.courseId) return null;
+  const course = await getLinkedCourse(db, presentation.courseId);
+  const permitted = canManage
+    ? canManageLinkedCourse(course, user)
+    : canReadLinkedCourse(course, user);
+  return permitted
+    ? null
+    : { status: course ? 403 : 404, message: "You do not have access to this course presentation." };
 };
 
 const acquireAssignmentLock = async (key) => {
@@ -75,6 +93,35 @@ const normalizePresentation = (presentation) => {
   };
 };
 
+const addCourseInformation = async (db, presentations) => {
+  const courseIds = [...new Set(
+    presentations
+      .map((presentation) => presentation.courseId)
+      .filter((courseId) => ObjectId.isValid(String(courseId || "")))
+      .map(String),
+  )].map((id) => new ObjectId(id));
+
+  const linkedCourses = courseIds.length
+    ? await db.collection("courses").find(
+        { _id: { $in: courseIds } },
+        { projection: { courseCode: 1, title: 1, studentIds: 1 } },
+      ).toArray()
+    : [];
+  const courseById = new Map(linkedCourses.map((course) => [String(course._id), course]));
+
+  return presentations.map((presentation) => {
+    const normalized = normalizePresentation(presentation);
+    const linkedCourse = courseById.get(String(presentation.courseId));
+    if (!linkedCourse) return normalized;
+    return {
+      ...normalized,
+      courseCode: linkedCourse.courseCode,
+      courseTitle: linkedCourse.title,
+      enrollmentCount: (linkedCourse.studentIds || []).length,
+    };
+  });
+};
+
 const migratePresentations = async (db) => {
   const docs = await db.collection(COLLECTION).find({}).toArray();
   for (const presentation of docs) {
@@ -127,13 +174,14 @@ const getPresentations = async (req, res) => {
     const db = getDB();
     await migratePresentations(db);
 
+    const filter = await resourceVisibilityFilter(db, req.user);
     const presentations = await db
       .collection(COLLECTION)
-      .find({})
+      .find(filter)
       .sort({ createdAt: -1 })
       .toArray();
 
-    res.status(200).json(presentations.map(normalizePresentation));
+    res.status(200).json(await addCourseInformation(db, presentations));
   } catch (error) {
     console.error("Get presentations error:", error);
 
@@ -165,8 +213,10 @@ const getPresentationById = async (req, res) => {
         message: "Presentation group not found.",
       });
     }
+    const accessError = await presentationAccessError(db, presentation, req.user);
+    if (accessError) return res.status(accessError.status).json({ message: accessError.message });
 
-    res.status(200).json(normalizePresentation(presentation));
+    res.status(200).json((await addCourseInformation(db, [presentation]))[0]);
   } catch (error) {
     console.error("Get presentation error:", error);
 
@@ -184,10 +234,11 @@ const getStudentPresentations = async (req, res) => {
 
     const db = getDB();
     await migratePresentations(db);
-    const presentations = await db.collection(COLLECTION).find({}).sort({ createdAt: -1 }).toArray();
+    const filter = await resourceVisibilityFilter(db, req.user);
+    const presentations = await db.collection(COLLECTION).find(filter).sort({ createdAt: -1 }).toArray();
 
-    res.status(200).json(presentations.map((presentation) => {
-      const normalized = normalizePresentation(presentation);
+    const enrichedPresentations = await addCourseInformation(db, presentations);
+    res.status(200).json(enrichedPresentations.map((normalized) => {
       return {
         ...normalized,
         topics: normalized.topics.map((topic, index) => {
@@ -229,6 +280,8 @@ const selectStudentPresentationTopic = async (req, res) => {
       await migratePresentations(db);
       const presentation = await db.collection(COLLECTION).findOne({ _id: new ObjectId(id) });
       if (!presentation) return res.status(404).json({ message: "Presentation group not found." });
+      const accessError = await presentationAccessError(db, presentation, req.user);
+      if (accessError) return res.status(accessError.status).json({ message: accessError.message });
 
       const normalized = normalizePresentation(presentation);
       const topic = normalized.topics[index];
@@ -302,7 +355,7 @@ const createPresentation = async (req, res) => {
     const db = getDB();
 
     const {
-      courseName,
+      courseId,
       teammates,
       submissionDeadline,
       presentationDate,
@@ -312,7 +365,7 @@ const createPresentation = async (req, res) => {
     } = req.body;
 
     if (
-      !courseName?.trim() ||
+      !courseId ||
       !teammates ||
       !submissionDeadline ||
       !presentationDate ||
@@ -337,10 +390,17 @@ const createPresentation = async (req, res) => {
     if (!Array.isArray(topics) || topics.length < 1 || topics.length > 10)
       return res.status(400).json({ message: "Please provide between 1 and 10 topics." });
 
-    const normalizedName = courseName.trim().toLowerCase();
+    const resolved = await resolveCourseForResourceWrite(db, req.user, courseId);
+    if (resolved.error) {
+      return res.status(resolved.error.status).json({ message: resolved.error.message });
+    }
+
+    const course = resolved.course;
+    const courseName = `${course.courseCode} - ${course.title}`;
+    const normalizedName = course.courseCode.toLowerCase();
 
     const existing = await db.collection(COLLECTION).findOne({
-      normalizedName,
+      courseId: course._id,
     });
 
     if (existing) {
@@ -350,7 +410,8 @@ const createPresentation = async (req, res) => {
     }
 
     const newPresentation = {
-      courseName: courseName.trim(),
+      courseId: course._id,
+      courseName,
       normalizedName,
       teammates: Number(teammates),
       submissionDeadline,
@@ -421,8 +482,8 @@ const assignPresentationTopic = async (req, res) => {
 
     await migratePresentations(db);
 
-    const studentId = String(selectedBy.id).trim();
-    const studentName = selectedBy.name.trim();
+    let studentId = String(selectedBy.id).trim();
+    let studentName = selectedBy.name.trim();
     const courseObjectId = new ObjectId(id);
     const lockKey = `${id}:${index}`;
     const releaseLock = await acquireAssignmentLock(lockKey);
@@ -430,6 +491,23 @@ const assignPresentationTopic = async (req, res) => {
       await migratePresentations(db);
       const course = await db.collection(COLLECTION).findOne({ _id: courseObjectId });
       if (!course) return res.status(404).json({ message: "Presentation group not found." });
+      const accessError = await presentationAccessError(db, course, req.user, true);
+      if (accessError) return res.status(accessError.status).json({ message: accessError.message });
+      if (course.courseId) {
+        const academicCourse = await getLinkedCourse(db, course.courseId);
+        const studentFilter = ObjectId.isValid(studentId)
+          ? { _id: new ObjectId(studentId), role: "student", active: { $ne: false } }
+          : { email: studentId.toLowerCase(), role: "student", active: { $ne: false } };
+        const enrolledStudent = await db.collection("users").findOne(studentFilter);
+        if (
+          !enrolledStudent ||
+          !(academicCourse.studentIds || []).some((id) => String(id) === String(enrolledStudent._id))
+        ) {
+          return res.status(403).json({ message: "Select a student enrolled in this course." });
+        }
+        studentId = enrolledStudent.email.trim().toLowerCase();
+        studentName = enrolledStudent.name || "";
+      }
       const topic = course.topics?.[index];
       if (!topic) return res.status(400).json({ message: "Invalid topic index." });
       const normalized = normalizePresentation(course);
@@ -506,6 +584,8 @@ const updatePresentationSettings = async (req, res) => {
     await migratePresentations(db);
     const course = await db.collection(COLLECTION).findOne({ _id: new ObjectId(id) });
     if (!course) return res.status(404).json({ message: "Presentation group not found." });
+    const accessError = await presentationAccessError(db, course, req.user, true);
+    if (accessError) return res.status(accessError.status).json({ message: accessError.message });
     const normalized = normalizePresentation(course);
 
     const maxTopicsPerStudent = 1;
@@ -554,6 +634,13 @@ const setPresentationTopicLocked = async (req, res) => {
     if (!Number.isInteger(index) || index < 0) return res.status(400).json({ message: "Invalid topic index." });
 
     await migratePresentations(db);
+    const presentation = await db.collection(COLLECTION).findOne({
+      _id: new ObjectId(id),
+    });
+    if (!presentation) return res.status(404).json({ message: "Presentation group not found." });
+    const accessError = await presentationAccessError(db, presentation, req.user, true);
+    if (accessError) return res.status(accessError.status).json({ message: accessError.message });
+
     const result = await db.collection(COLLECTION).updateOne(
       { _id: new ObjectId(id), [`topics.${index}`]: { $exists: true } },
       { $set: { [`topics.${index}.locked`]: locked } },
@@ -580,6 +667,8 @@ const unassignPresentationTopic = async (req, res) => {
     await migratePresentations(db);
     const course = await db.collection(COLLECTION).findOne({ _id: new ObjectId(id) });
     if (!course) return res.status(404).json({ message: "Presentation group not found." });
+    const accessError = await presentationAccessError(db, course, req.user, true);
+    if (accessError) return res.status(accessError.status).json({ message: accessError.message });
     const topic = course.topics?.[index];
     if (!topic) return res.status(404).json({ message: "Topic not found." });
     const selection = (topic.selections || []).find((item) => String(item.id) === String(studentId).trim());
@@ -610,6 +699,11 @@ const submitPresentation = async (req, res) => {
     const studentId = req.user.email;
 
     await migratePresentations(db);
+    const presentation = await db.collection(COLLECTION).findOne({ _id: new ObjectId(id) });
+    if (!presentation) return res.status(404).json({ message: "Presentation group not found." });
+    const accessError = await presentationAccessError(db, presentation, req.user);
+    if (accessError) return res.status(accessError.status).json({ message: accessError.message });
+
     const submission = {
       studentId: String(studentId).trim(),
       submittedBy: studentName?.trim() || "",
@@ -642,9 +736,11 @@ const deletePresentation = async (req, res) => {
       });
     }
 
-    const result = await db.collection(COLLECTION).deleteOne({
-      _id: new ObjectId(id),
-    });
+    const existing = await db.collection(COLLECTION).findOne({ _id: new ObjectId(id) });
+    if (!existing) return res.status(404).json({ message: "Presentation group not found." });
+    const accessError = await presentationAccessError(db, existing, req.user, true);
+    if (accessError) return res.status(accessError.status).json({ message: accessError.message });
+    const result = await db.collection(COLLECTION).deleteOne({ _id: new ObjectId(id) });
 
     if (result.deletedCount === 0) {
       return res.status(404).json({

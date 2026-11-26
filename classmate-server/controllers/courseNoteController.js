@@ -3,19 +3,27 @@ const path = require("node:path");
 const { ObjectId } = require("mongodb");
 const { getDB } = require("../config/db");
 const { UPLOAD_DIRECTORY } = require("../middleware/courseNoteUpload");
+const {
+  canManageLinkedCourse,
+  canReadLinkedCourse,
+  enrichCourseLabels,
+  getLinkedCourse,
+  resourceVisibilityFilter,
+  resolveCourseForResourceWrite,
+} = require("../utils/courseAccess");
 
 const COLLECTION = "courseNotes";
 const RELATIVE_UPLOAD_DIRECTORY = path.posix.join("uploads", "course-notes");
 
 const validateNoteDetails = (body = {}) => {
-  const { title, description = "", course } = body;
+  const { title, description = "", courseId } = body;
 
   if (
     typeof title !== "string" ||
     !title.trim() ||
     typeof description !== "string" ||
-    typeof course !== "string" ||
-    !course.trim()
+    typeof courseId !== "string" ||
+    !ObjectId.isValid(courseId)
   ) {
     return null;
   }
@@ -23,7 +31,7 @@ const validateNoteDetails = (body = {}) => {
   return {
     title: title.trim(),
     description: description.trim(),
-    course: course.trim(),
+    courseId: new ObjectId(courseId),
   };
 };
 
@@ -45,6 +53,9 @@ const serializedNote = (note) => {
     title: note.title,
     description: note.description || "",
     course: note.course,
+    courseId: note.courseId ? String(note.courseId) : null,
+    courseCode: note.courseCode || null,
+    courseTitle: note.courseTitle || null,
     originalFileName: note.originalFileName,
     fileSize: note.fileSize,
     uploadedBy: note.uploadedBy
@@ -133,13 +144,15 @@ const fileDetails = (file) => ({
 const getCourseNotes = async (req, res) => {
   try {
     const db = getDB();
+    const filter = await resourceVisibilityFilter(db, req.user);
     const notes = await db
       .collection(COLLECTION)
-      .find({})
+      .find(filter)
       .sort({ createdAt: -1 })
       .toArray();
 
-    res.status(200).json(notes.map(serializedNote));
+    const enrichedNotes = await enrichCourseLabels(db, notes);
+    res.status(200).json(enrichedNotes.map(serializedNote));
   } catch (error) {
     console.error("Get course notes error:", error);
     res.status(500).json({ message: "Failed to fetch course notes." });
@@ -161,6 +174,13 @@ const createCourseNote = async (req, res) => {
 
   let inserted = false;
   try {
+    const db = getDB();
+    const resolved = await resolveCourseForResourceWrite(db, req.user, details.courseId);
+    if (resolved.error) {
+      await removeUploadedFile(req.file);
+      return res.status(resolved.error.status).json({ message: resolved.error.message });
+    }
+
     if (!(await hasPdfSignature(req.file.path))) {
       await removeUploadedFile(req.file);
       return res.status(400).json({ message: "The uploaded file is not a valid PDF." });
@@ -168,7 +188,10 @@ const createCourseNote = async (req, res) => {
 
     const now = new Date();
     const note = {
-      ...details,
+      title: details.title,
+      description: details.description,
+      courseId: resolved.course._id,
+      course: resolved.course.courseCode,
       ...fileDetails(req.file),
       uploadedBy: {
         _id: req.user._id,
@@ -180,12 +203,16 @@ const createCourseNote = async (req, res) => {
       updatedAt: now,
     };
 
-    const db = getDB();
     const result = await db.collection(COLLECTION).insertOne(note);
     inserted = true;
     res.status(201).json({
       message: "Course note uploaded successfully.",
-      note: serializedNote({ ...note, _id: result.insertedId }),
+      note: serializedNote({
+        ...note,
+        _id: result.insertedId,
+        courseCode: resolved.course.courseCode,
+        courseTitle: resolved.course.title,
+      }),
     });
   } catch (error) {
     if (!inserted) await removeUploadedFile(req.file);
@@ -219,12 +246,31 @@ const updateCourseNote = async (req, res) => {
       return res.status(404).json({ message: "Course note not found." });
     }
 
+    if (existing.courseId) {
+      const currentCourse = await getLinkedCourse(db, existing.courseId);
+      if (!canManageLinkedCourse(currentCourse, req.user)) {
+        await removeUploadedFile(req.file);
+        return res.status(403).json({ message: "You are not assigned to manage this note's course." });
+      }
+    }
+    const resolved = await resolveCourseForResourceWrite(db, req.user, details.courseId);
+    if (resolved.error) {
+      await removeUploadedFile(req.file);
+      return res.status(resolved.error.status).json({ message: resolved.error.message });
+    }
+
     if (req.file && !(await hasPdfSignature(req.file.path))) {
       await removeUploadedFile(req.file);
       return res.status(400).json({ message: "The uploaded file is not a valid PDF." });
     }
 
-    const updates = { ...details, updatedAt: new Date() };
+    const updates = {
+      title: details.title,
+      description: details.description,
+      courseId: resolved.course._id,
+      course: resolved.course.courseCode,
+      updatedAt: new Date(),
+    };
     if (req.file) Object.assign(updates, fileDetails(req.file));
 
     const result = await db.collection(COLLECTION).updateOne(filter, {
@@ -249,7 +295,11 @@ const updateCourseNote = async (req, res) => {
 
     res.status(200).json({
       message: "Course note updated successfully.",
-      note: serializedNote(updatedNote),
+      note: serializedNote({
+        ...updatedNote,
+        courseCode: resolved.course.courseCode,
+        courseTitle: resolved.course.title,
+      }),
       warning,
     });
   } catch (error) {
@@ -271,6 +321,12 @@ const deleteCourseNote = async (req, res) => {
     const note = await db.collection(COLLECTION).findOne(filter);
     if (!note) {
       return res.status(404).json({ message: "Course note not found." });
+    }
+    if (note.courseId) {
+      const course = await getLinkedCourse(db, note.courseId);
+      if (!canManageLinkedCourse(course, req.user)) {
+        return res.status(403).json({ message: "You are not assigned to manage this note's course." });
+      }
     }
 
     const result = await db.collection(COLLECTION).deleteOne(filter);
@@ -307,6 +363,12 @@ const serveCourseNoteFile = async (req, res) => {
     });
     if (!note) {
       return res.status(404).json({ message: "Course note not found." });
+    }
+    if (note.courseId) {
+      const course = await getLinkedCourse(db, note.courseId);
+      if (!canReadLinkedCourse(course, req.user)) {
+        return res.status(403).json({ message: "You are not enrolled in this course." });
+      }
     }
 
     const filePath = validStoredFilePath(note);

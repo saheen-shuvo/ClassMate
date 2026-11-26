@@ -1,4 +1,4 @@
-const API_URL = `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/presentations`;
+const API_URL = `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5001"}/api/presentations`;
 
 // Reusable API request handler
 const apiRequest = async (url, options = {}) => {
@@ -25,11 +25,11 @@ export const getPresentationCourses = async () => {
   return await apiRequest(API_URL);
 };
 
-export const getStudentPresentations = async (studentEmail) => {
+export const getStudentPresentations = async () => {
   return await apiRequest(`${API_URL}/student`);
 };
 
-export const selectStudentPresentationTopic = async (courseId, topicIndex, studentEmail) => {
+export const selectStudentPresentationTopic = async (courseId, topicIndex) => {
   return await apiRequest(`${API_URL}/${courseId}/topics/${topicIndex}/select`, {
     method: "PUT",
   });

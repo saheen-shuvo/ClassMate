@@ -31,7 +31,8 @@ import {
   UsersRound,
 } from "lucide-react";
 
-import { presentationStudents } from "@/lib/presentationStudents";
+import { presentationStudents as legacyPresentationStudents } from "@/lib/presentationStudents";
+import { getCourseStudents } from "@/lib/courseStorage";
 import {
   getPresentationCourseById,
   assignPresentationTopic,
@@ -76,12 +77,15 @@ const formatDay = (date) => {
 export default function PresentationDetailsPage() {
   const params = useParams();
   const courseId = decodeURIComponent(params.courseId);
-  const returnToAdmin = useSearchParams().get("returnTo") === "admin";
-  const presentationsHref = returnToAdmin
+  const returnTo = useSearchParams().get("returnTo");
+  const presentationsHref = returnTo === "admin"
     ? "/dashboard/admin#presentations"
-    : "/dashboard/cr#presentations";
+    : returnTo === "faculty"
+      ? "/dashboard/faculty#presentations"
+      : "/dashboard/cr#presentations";
 
   const [course, setCourse] = useState(null);
+  const [courseStudents, setCourseStudents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState("topics"); // "topics" | "groups"
   const [search, setSearch] = useState("");
@@ -118,6 +122,16 @@ export default function PresentationDetailsPage() {
       setLoading(true);
       const data = await getPresentationCourseById(courseId);
       setCourse(data);
+      if (data.courseId) {
+        const roster = await getCourseStudents(data.courseId);
+        setCourseStudents(roster.map((student) => ({
+          id: student.email,
+          name: student.name,
+          studentNumber: student.studentId || "",
+        })));
+      } else {
+        setCourseStudents([]);
+      }
     } catch (error) {
       console.error("Failed to load presentation:", error);
       setCourse(null);
@@ -167,6 +181,7 @@ export default function PresentationDetailsPage() {
     });
   });
 
+  const presentationStudents = course?.courseId ? courseStudents : legacyPresentationStudents;
   const availableStudents = presentationStudents.filter((student) => {
     const held = selectionsByStudent.get(String(student.id)) || [];
     return held.length < maxTopicsPerStudent;

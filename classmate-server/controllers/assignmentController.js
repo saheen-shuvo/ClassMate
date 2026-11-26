@@ -1,19 +1,27 @@
 
 const { getDB } = require("../config/db");
 const { ObjectId } = require("mongodb");
+const {
+  canManageLinkedCourse,
+  enrichCourseLabels,
+  getLinkedCourse,
+  resourceVisibilityFilter,
+  resolveCourseForResourceWrite,
+} = require("../utils/courseAccess");
 
 const COLLECTION = "assignments";
 
 const getAssignments = async (req, res) => {
   try {
     const db = getDB();
+    const filter = await resourceVisibilityFilter(db, req.user);
     const assignments = await db
       .collection(COLLECTION)
-      .find({})
+      .find(filter)
       .sort({ createdAt: -1 })
       .toArray();
 
-    res.status(200).json(assignments);
+    res.status(200).json(await enrichCourseLabels(db, assignments));
   } catch (error) {
     console.error("Get assignments error:", error);
     res.status(500).json({ message: "Failed to fetch assignments." });
@@ -22,13 +30,12 @@ const getAssignments = async (req, res) => {
 
 const createAssignment = async (req, res) => {
   try {
-    const { title, description, instructions, course, dueDate, totalMarks } =
+    const { title, description, instructions, dueDate, totalMarks, courseId } =
       req.body;
 
     if (
       !title?.trim() ||
       !description?.trim() ||
-      !course?.trim() ||
       !dueDate ||
       totalMarks === undefined
     ) {
@@ -50,11 +57,18 @@ const createAssignment = async (req, res) => {
       return res.status(400).json({ message: "Invalid due date." });
     }
 
+    const db = getDB();
+    const resolved = await resolveCourseForResourceWrite(db, req.user, courseId);
+    if (resolved.error) {
+      return res.status(resolved.error.status).json({ message: resolved.error.message });
+    }
+
     const assignment = {
       title: title.trim(),
       description: description.trim(),
       instructions: (instructions || "").trim(),
-      course: course.trim(),
+      courseId: resolved.course._id,
+      course: resolved.course.courseCode,
       dueDate: parsedDueDate,
       totalMarks: parsedMarks,
       status: "Published",
@@ -62,7 +76,6 @@ const createAssignment = async (req, res) => {
       updatedAt: new Date(),
     };
 
-    const db = getDB();
     const result = await db.collection(COLLECTION).insertOne(assignment);
 
     res.status(201).json({
@@ -83,13 +96,12 @@ const updateAssignment = async (req, res) => {
       return res.status(400).json({ message: "Invalid assignment ID." });
     }
 
-    const { title, description, instructions, course, dueDate, totalMarks } =
+    const { title, description, instructions, dueDate, totalMarks, courseId } =
       req.body;
 
     if (
       !title?.trim() ||
       !description?.trim() ||
-      !course?.trim() ||
       !dueDate ||
       totalMarks === undefined
     ) {
@@ -111,19 +123,35 @@ const updateAssignment = async (req, res) => {
       return res.status(400).json({ message: "Invalid due date." });
     }
 
+    const db = getDB();
+    const _id = new ObjectId(id);
+    const existing = await db.collection(COLLECTION).findOne({ _id });
+    if (!existing) return res.status(404).json({ message: "Assignment not found." });
+
+    if (existing.courseId) {
+      const currentCourse = await getLinkedCourse(db, existing.courseId);
+      if (!canManageLinkedCourse(currentCourse, req.user)) {
+        return res.status(403).json({ message: "You are not assigned to manage this assignment's course." });
+      }
+    }
+    const resolved = await resolveCourseForResourceWrite(db, req.user, courseId);
+    if (resolved.error) {
+      return res.status(resolved.error.status).json({ message: resolved.error.message });
+    }
+
     const updatedData = {
       title: title.trim(),
       description: description.trim(),
       instructions: (instructions || "").trim(),
-      course: course.trim(),
+      courseId: resolved.course._id,
+      course: resolved.course.courseCode,
       dueDate: parsedDueDate,
       totalMarks: parsedMarks,
       updatedAt: new Date(),
     };
 
-    const db = getDB();
     const result = await db.collection(COLLECTION).updateOne(
-      { _id: new ObjectId(id) },
+      { _id },
       { $set: updatedData }
     );
 
@@ -133,11 +161,11 @@ const updateAssignment = async (req, res) => {
 
     const updatedAssignment = await db
       .collection(COLLECTION)
-      .findOne({ _id: new ObjectId(id) });
+      .findOne({ _id });
 
     res.status(200).json({
       message: "Assignment updated successfully.",
-      assignment: updatedAssignment,
+      assignment: (await enrichCourseLabels(db, [updatedAssignment]))[0],
     });
   } catch (error) {
     console.error("Update assignment error:", error);
@@ -154,8 +182,17 @@ const deleteAssignment = async (req, res) => {
     }
 
     const db = getDB();
+    const _id = new ObjectId(id);
+    const existing = await db.collection(COLLECTION).findOne({ _id });
+    if (!existing) return res.status(404).json({ message: "Assignment not found." });
+    if (existing.courseId) {
+      const course = await getLinkedCourse(db, existing.courseId);
+      if (!canManageLinkedCourse(course, req.user)) {
+        return res.status(403).json({ message: "You are not assigned to manage this assignment's course." });
+      }
+    }
     const result = await db.collection(COLLECTION).deleteOne({
-      _id: new ObjectId(id),
+      _id,
     });
 
     if (!result.deletedCount) {

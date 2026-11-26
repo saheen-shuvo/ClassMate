@@ -1,5 +1,4 @@
 /* eslint-disable react-hooks/set-state-in-effect */
-/* eslint-disable react/no-unescaped-entities */
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
@@ -30,38 +29,12 @@ import {
 import Swal from "sweetalert2";
 import AcademicCalendar from "@/components/shared/AcademicCalendar";
 import CourseNotesLibrary from "@/components/shared/CourseNotesLibrary";
+import MyCourses from "@/components/shared/MyCourses";
+import AssignmentList from "@/components/studentDashboard/AssignmentList";
 import StudentPresentations from "@/components/studentDashboard/Presentations";
 import { getCurrentUser, logoutUser, dashboardForRole } from "@/lib/auth";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
-
-// Course enrollment is still sample data; note records use the shared API.
-const enrolledCourses = [
-  {
-    id: "CSE 412",
-    code: "CSE 412",
-    title: "Machine Learning",
-    instructor: "Course Faculty",
-    progress: 68,
-    color: "blue",
-  },
-  {
-    id: "CSE 321",
-    code: "CSE 321",
-    title: "Operating Systems",
-    instructor: "Course Faculty",
-    progress: 52,
-    color: "violet",
-  },
-  {
-    id: "CSE 331",
-    code: "CSE 331",
-    title: "Database Management Systems",
-    instructor: "Course Faculty",
-    progress: 81,
-    color: "emerald",
-  },
-];
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5001";
 
 export default function StudentDashboardPage() {
   const [activePage, setActivePage] = useState("overview");
@@ -74,6 +47,7 @@ export default function StudentDashboardPage() {
   const [studentName, setStudentName] = useState("Student");
   const [studentEmail, setStudentEmail] = useState("");
   const [courseNotes, setCourseNotes] = useState([]);
+  const [enrolledCourses, setEnrolledCourses] = useState([]);
 
   const showToast = (message) => {
     setToast(message);
@@ -151,6 +125,7 @@ export default function StudentDashboardPage() {
         { id: "overview", label: "Overview", icon: LayoutDashboard },
         { id: "calendar", label: "Academic Calendar", icon: CalendarDays },
         { id: "courses", label: "My Courses", icon: BookOpen },
+        { id: "assignments", label: "Assignments", icon: ClipboardList },
         { id: "notes", label: "Course Notes", icon: FileText },
       ],
     },
@@ -172,6 +147,7 @@ export default function StudentDashboardPage() {
     overview: "Student Overview",
     calendar: "Academic Calendar",
     courses: "My Courses",
+    assignments: "Assignments",
     notes: "Course Notes",
     announcements: "Announcements",
     presentations: "Presentations",
@@ -405,6 +381,10 @@ export default function StudentDashboardPage() {
 
         <main className="mx-auto max-w-[1600px] space-y-7 p-4 sm:p-6 lg:p-8">
           <CourseNotesLibrary hidden={activePage !== "notes"} onNotesChange={setCourseNotes} />
+          <MyCourses
+            hidden={activePage !== "courses"}
+            onCoursesChange={setEnrolledCourses}
+          />
 
           {toast && (
             <div className="flex items-center justify-between rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-xs font-semibold text-blue-700">
@@ -560,20 +540,20 @@ export default function StudentDashboardPage() {
                     </div>
                     <div className="space-y-4">
                       {enrolledCourses.slice(0, 3).map((course) => (
-                        <div key={course.id} className="rounded-xl border border-slate-100 p-3 sm:p-4">
+                        <div key={course._id} className="rounded-xl border border-slate-100 p-3 sm:p-4">
                           <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0">
-                              <p className="text-[10px] font-bold text-blue-600">{course.code}</p>
+                              <p className="text-[10px] font-bold text-blue-600">{course.courseCode}</p>
                               <h4 className="mt-1 text-xs font-bold text-slate-800">{course.title}</h4>
-                              <p className="mt-1 text-[10px] text-slate-400">{course.instructor}</p>
+                              <p className="mt-1 text-[10px] text-slate-400">{course.faculty?.name || "Faculty not assigned"}</p>
                             </div>
-                            <span className="shrink-0 text-xs font-bold text-slate-600">{course.progress}%</span>
-                          </div>
-                          <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100">
-                            <div className="h-full rounded-full bg-blue-600" style={{ width: `${course.progress}%` }} />
+                            <span className="shrink-0 rounded-full bg-emerald-50 px-2 py-1 text-[9px] font-bold text-emerald-700">Enrolled</span>
                           </div>
                         </div>
                       ))}
+                      {enrolledCourses.length === 0 && (
+                        <p className="text-xs text-slate-500">No courses have been assigned to your account yet.</p>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -617,42 +597,7 @@ export default function StudentDashboardPage() {
           )}
 
           {activePage === "calendar" && <AcademicCalendar role="student" />}
-
-          {/* Courses */}
-          {activePage === "courses" && (
-            <section className="space-y-5">
-              <div>
-                <h2 className="text-lg font-bold text-slate-900">My Enrolled Courses</h2>
-                <p className="mt-1 text-xs text-slate-500">Review your current semester courses and progress.</p>
-              </div>
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-                {enrolledCourses.map((course) => (
-                  <div key={course.id} className="rounded-2xl border border-slate-200 bg-white p-5">
-                    <div className="flex items-center justify-between">
-                      <div className={`flex h-11 w-11 items-center justify-center rounded-xl ${colorStyles[course.color]}`}>
-                        <BookOpen size={21} />
-                      </div>
-                      <span className="rounded-lg bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-600">
-                        {course.code}
-                      </span>
-                    </div>
-                    <h3 className="mt-4 text-sm font-bold text-slate-900">{course.title}</h3>
-                    <p className="mt-1 text-xs text-slate-500">{course.instructor}</p>
-                    <div className="mt-5 flex items-center justify-between text-[11px]">
-                      <span className="text-slate-500">Course progress</span>
-                      <span className="font-bold text-slate-700">{course.progress}%</span>
-                    </div>
-                    <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100">
-                      <div className="h-full rounded-full bg-blue-600" style={{ width: `${course.progress}%` }} />
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <p className="text-[11px] text-slate-400">
-                Note: Course information is currently sample data. Connect your enrollment API to show each student's actual courses.
-              </p>
-            </section>
-          )}
+          {activePage === "assignments" && <AssignmentList />}
 
           {/* Announcements */}
           {activePage === "announcements" && (

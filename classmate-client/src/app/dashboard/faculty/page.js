@@ -9,6 +9,7 @@ import {
   FileText,
   Bell,
   Presentation,
+  ClipboardList,
   Brain,
   Menu,
   X,
@@ -30,6 +31,8 @@ import {
 import PresentationComponent from "@/components/crDashboard/Presentation";
 import AcademicCalendar from "@/components/shared/AcademicCalendar";
 import CourseNotesLibrary from "@/components/shared/CourseNotesLibrary";
+import MyCourses from "@/components/shared/MyCourses";
+import AssignmentManagement from "@/components/faculty/AssignmentManagement";
 import Swal from "sweetalert2";
 import { getCurrentUser, logoutUser, dashboardForRole } from "@/lib/auth";
 
@@ -42,6 +45,7 @@ export default function FacultyDashboardPage() {
   const [facultyName, setFacultyName] = useState("Faculty");
 
   const [notes, setNotes] = useState([]);
+  const [myCourses, setMyCourses] = useState([]);
 
   const [announcements, setAnnouncements] = useState([]);
   const [announcementLoading, setAnnouncementLoading] = useState(false);
@@ -216,6 +220,7 @@ export default function FacultyDashboardPage() {
       items: [
         { id: "overview", label: "Overview", icon: LayoutDashboard },
         { id: "calendar", label: "Academic Calendar", icon: CalendarDays },
+        { id: "courses", label: "My Courses", icon: BookOpen },
       ],
     },
     {
@@ -224,6 +229,7 @@ export default function FacultyDashboardPage() {
         { id: "notes", label: "Course Notes", icon: FileText },
         { id: "announcements", label: "Announcements", icon: Bell },
         { id: "presentations", label: "Presentations", icon: Presentation },
+        { id: "assignments", label: "Assignments", icon: ClipboardList },
         { id: "quizzes", label: "Quiz Bank", icon: Brain },
       ],
     },
@@ -232,6 +238,8 @@ export default function FacultyDashboardPage() {
   const pageTitles = {
     overview: "Dashboard Overview",
     calendar: "Mini Academic Calendar",
+    courses: "My Courses",
+    assignments: "Assignments",
     notes: "Course Notes",
     announcements: "Announcements",
     presentations: "Presentation Topics",
@@ -241,11 +249,11 @@ export default function FacultyDashboardPage() {
   const stats = [
     {
       title: "Assigned Courses",
-      value: "05",
-      subtitle: "Active course modules",
+      value: myCourses.length.toString().padStart(2, "0"),
+      subtitle: "Courses assigned to you",
       icon: BookOpen,
       color: "blue",
-      growth: "Current semester",
+      growth: "Current assignments",
     },
     {
       title: "Uploaded Notes",
@@ -511,6 +519,11 @@ export default function FacultyDashboardPage() {
         {/* Page Content */}
         <main className="mx-auto max-w-[1600px] space-y-7 p-4 sm:p-6 lg:p-8">
           <CourseNotesLibrary hidden={activePage !== "notes"} onNotesChange={setNotes} />
+          <MyCourses
+            hidden={activePage !== "courses"}
+            showStudents
+            onCoursesChange={setMyCourses}
+          />
 
           {/* Toast */}
           {toast && (
@@ -915,9 +928,10 @@ export default function FacultyDashboardPage() {
 
           {/* Mini Academic Calendar */}
           {activePage === "calendar" && <AcademicCalendar role="faculty" />}
+          {activePage === "assignments" && <AssignmentManagement />}
 
           {/* Presentations */}
-          {activePage === "presentations" && <PresentationComponent />}
+          {activePage === "presentations" && <PresentationComponent dashboardPath="/dashboard/faculty" />}
 
           {/* Quiz Bank */}
           {activePage === "quizzes" && (

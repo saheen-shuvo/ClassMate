@@ -13,6 +13,7 @@ import {
   X,
 } from "lucide-react";
 import Swal from "sweetalert2";
+import { getCourses } from "@/lib/courseStorage";
 import {
   createCourseNote,
   deleteCourseNote,
@@ -22,7 +23,7 @@ import {
 } from "@/lib/courseNoteStorage";
 
 const MAX_FILE_SIZE = 15 * 1024 * 1024;
-const EMPTY_FORM = { title: "", description: "", course: "" };
+const EMPTY_FORM = { title: "", description: "", courseId: "" };
 
 function formatNote(note) {
   const createdAt = note.createdAt ? new Date(note.createdAt) : null;
@@ -48,9 +49,12 @@ function formatNote(note) {
 export default function CourseNotesLibrary({
   canManage = false,
   hidden = false,
+  managerUserId = null,
   onNotesChange,
 }) {
   const [notes, setNotes] = useState([]);
+  const [courses, setCourses] = useState([]);
+  const [courseError, setCourseError] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
@@ -88,6 +92,23 @@ export default function CourseNotesLibrary({
     void Promise.resolve().then(loadNotes);
   }, [loadNotes]);
 
+  const loadCourses = useCallback(async () => {
+    try {
+      const data = await getCourses();
+      if (!Array.isArray(data)) throw new Error("Unexpected courses response.");
+      setCourses(data.filter((course) => course.status === "active"));
+      setCourseError("");
+    } catch (requestError) {
+      console.error("Fetch course-note courses error:", requestError);
+      setCourseError(requestError.message || "Failed to load assigned courses.");
+      setCourses([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (canManage) void Promise.resolve().then(loadCourses);
+  }, [canManage, loadCourses]);
+
   useEffect(() => {
     if (fileInputRef.current) fileInputRef.current.value = "";
   }, [modalOpen, editingNote]);
@@ -101,11 +122,15 @@ export default function CourseNotesLibrary({
   };
 
   const openEdit = (note) => {
+    const matchedCourse = courses.find((course) =>
+      course._id === note.courseId ||
+      course.courseCode.toLowerCase() === String(note.course || "").toLowerCase()
+    );
     setEditingNote(note);
     setForm({
       title: note.title || "",
       description: note.description || "",
-      course: note.course || "",
+      courseId: matchedCourse?._id || "",
     });
     setSelectedFile(null);
     setFormError("");
@@ -143,7 +168,7 @@ export default function CourseNotesLibrary({
     event.preventDefault();
     if (!canManage || saving) return;
 
-    if (!form.title.trim() || !form.course.trim()) {
+    if (!form.title.trim() || !form.courseId) {
       setFormError("Please provide a note title and course.");
       return;
     }
@@ -158,7 +183,7 @@ export default function CourseNotesLibrary({
       const details = {
         title: form.title.trim(),
         description: form.description.trim(),
-        course: form.course.trim(),
+        courseId: form.courseId,
       };
       const response = editingNote
         ? await updateCourseNote(editingNote.id, details, selectedFile)
@@ -213,6 +238,8 @@ export default function CourseNotesLibrary({
       note.description?.toLowerCase().includes(query)
     );
   });
+  const canManageNote = (note) =>
+    canManage && (!managerUserId || note.uploadedBy?._id === managerUserId);
 
   return (
     <section className="space-y-5" hidden={hidden}>
@@ -225,7 +252,7 @@ export default function CourseNotesLibrary({
               : "Browse course learning resources and PDF files."}
           </p>
         </div>
-        {canManage && (
+        {canManage && courses.length > 0 && (
           <button
             onClick={openCreate}
             className="flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-bold text-white hover:bg-blue-700"
@@ -238,6 +265,11 @@ export default function CourseNotesLibrary({
       {notice && (
         <div role="status" className="rounded-xl border border-blue-100 bg-blue-50 p-3 text-xs text-blue-700">
           {notice}
+        </div>
+      )}
+      {canManage && courseError && (
+        <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700">
+          {courseError}
         </div>
       )}
 
@@ -307,7 +339,11 @@ export default function CourseNotesLibrary({
               </div>
 
               <h3 className="mt-4 break-words text-sm font-bold text-slate-900">{note.title}</h3>
-              <p className="mt-2 text-xs text-slate-500">{note.course} · {note.date}</p>
+              <p className="mt-2 text-xs text-slate-500">
+                {note.courseTitle
+                  ? `${note.courseCode || note.course} - ${note.courseTitle}`
+                  : note.course} · {note.date}
+              </p>
               {note.description && (
                 <p className="mt-2 whitespace-pre-wrap text-xs leading-relaxed text-slate-500">
                   {note.description}
@@ -372,13 +408,19 @@ export default function CourseNotesLibrary({
 
             <label className="block text-xs font-semibold text-slate-700">
               Course
-              <input
+              <select
                 required
-                maxLength={120}
-                value={form.course}
-                onChange={(event) => setForm({ ...form, course: event.target.value })}
-                className="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5 font-normal outline-none focus:border-blue-500"
-              />
+                value={form.courseId}
+                onChange={(event) => setForm({ ...form, courseId: event.target.value })}
+                className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 font-normal outline-none focus:border-blue-500"
+              >
+                <option value="">Select an assigned active course</option>
+                {courses.map((course) => (
+                  <option key={course._id} value={course._id}>
+                    {course.courseCode} - {course.title}
+                  </option>
+                ))}
+              </select>
             </label>
             <label className="block text-xs font-semibold text-slate-700">
               Note title

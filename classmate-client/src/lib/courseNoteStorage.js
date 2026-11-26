@@ -29,7 +29,7 @@ const buildNoteForm = (details, file) => {
   const body = new FormData();
   body.append("title", details.title);
   body.append("description", details.description);
-  body.append("course", details.course);
+  body.append("courseId", details.courseId);
   if (file) body.append("file", file);
   return body;
 };
