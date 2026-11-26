@@ -27,6 +27,7 @@ import {
   Clock,
 } from "lucide-react";
 import Swal from "sweetalert2";
+import AcademicCalendar from "@/components/shared/AcademicCalendar";
 import {
   getCurrentUser,
   logoutUser,
@@ -222,7 +223,10 @@ export default function AdminDashboardPage() {
   }, [activePage, roleFilter, search, users]);
 
   const navGroups = [
-    { title: "WORKSPACE", items: [{ id: "overview", label: "Overview", icon: LayoutDashboard }] },
+    { title: "WORKSPACE", items: [
+      { id: "overview", label: "Overview", icon: LayoutDashboard },
+      { id: "calendar", label: "Academic Calendar", icon: CalendarDays },
+    ] },
     { title: "ADMINISTRATION", items: [
       { id: "users", label: "User Management", icon: Users },
       { id: "students", label: "Students", icon: GraduationCap },
@@ -300,6 +304,8 @@ export default function AdminDashboardPage() {
               <section className="rounded-2xl border border-slate-200 bg-white p-5"><h3 className="text-sm font-bold text-slate-900">Recent Announcements</h3><div className="mt-4 space-y-3">{overview?.recentAnnouncements?.length ? overview.recentAnnouncements.map(item=> <div key={item._id} className="border-b border-slate-100 pb-3"><p className="text-xs font-bold text-slate-800">{item.title}</p><p className="mt-1 text-[11px] text-slate-400">{item.course || "General"} · {formatDate(item.createdAt)}</p></div>) : <p className="text-xs text-slate-400">No announcements.</p>}</div></section>
             </div>
           </>}
+
+          {activePage === "calendar" && <AcademicCalendar role="admin" />}
 
           {["users","students","faculty","cr"].includes(activePage) && <section className="space-y-5">
             <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center"><div><h2 className="text-lg font-bold text-slate-900">{activePage==="users" ? "User Management" : activePage==="students" ? "Students" : activePage==="faculty" ? "Faculty" : "Class Representatives"}</h2><p className="mt-1 text-xs text-slate-500">Manage accounts stored in the MongoDB users collection.</p></div><button onClick={openCreate} className="flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-bold text-white hover:bg-blue-700"><Plus size={15}/>Create account</button></div>

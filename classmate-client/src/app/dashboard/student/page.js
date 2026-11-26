@@ -29,6 +29,7 @@ import {
   Megaphone,
 } from "lucide-react";
 import Swal from "sweetalert2";
+import AcademicCalendar from "@/components/shared/AcademicCalendar";
 import StudentPresentations from "@/components/studentDashboard/Presentations";
 import { getCurrentUser, logoutUser, dashboardForRole } from "@/lib/auth";
 
@@ -173,6 +174,7 @@ export default function StudentDashboardPage() {
       title: "MY LEARNING",
       items: [
         { id: "overview", label: "Overview", icon: LayoutDashboard },
+        { id: "calendar", label: "Academic Calendar", icon: CalendarDays },
         { id: "courses", label: "My Courses", icon: BookOpen },
         { id: "notes", label: "Course Notes", icon: FileText },
       ],
@@ -193,6 +195,7 @@ export default function StudentDashboardPage() {
 
   const pageTitles = {
     overview: "Student Overview",
+    calendar: "Academic Calendar",
     courses: "My Courses",
     notes: "Course Notes",
     announcements: "Announcements",
@@ -643,6 +646,8 @@ export default function StudentDashboardPage() {
               </section>
             </>
           )}
+
+          {activePage === "calendar" && <AcademicCalendar role="student" />}
 
           {/* Courses */}
           {activePage === "courses" && (

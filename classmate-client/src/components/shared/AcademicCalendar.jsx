@@ -1,4 +1,5 @@
 
+/* eslint-disable react-hooks/set-state-in-effect */
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -14,7 +15,7 @@ import {
   AlertCircle,
 } from "lucide-react";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5001";
 
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
@@ -23,7 +24,7 @@ function parseLocalDate(value) {
 
   // Handle date-only values without UTC timezone shifting.
   if (typeof value === "string") {
-    const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    const match = value.match(/^(\d{4})-(\d{2})-(\d{2})(?:T00:00:00(?:\.000)?Z)?$/);
 
     if (match) {
       const date = new Date(
@@ -107,7 +108,7 @@ function getCalendarEvents(assignments, presentations) {
   return events.sort((a, b) => a.date - b.date);
 }
 
-export default function MiniAcademicCalendar() {
+export default function AcademicCalendar({ role }) {
   const [assignments, setAssignments] = useState([]);
   const [presentations, setPresentations] = useState([]);
 
@@ -126,7 +127,9 @@ export default function MiniAcademicCalendar() {
     setLoadError("");
 
     const results = await Promise.allSettled([
-      fetch(`${API_URL}/api/assignments`).then(async (response) => {
+      fetch(`${API_URL}/api/assignments`, {
+        credentials: "include",
+      }).then(async (response) => {
         const data = await response.json();
 
         if (!response.ok) {
@@ -138,7 +141,9 @@ export default function MiniAcademicCalendar() {
         return getArray(data, "assignments");
       }),
 
-      fetch(`${API_URL}/api/presentations`).then(async (response) => {
+      fetch(`${API_URL}/api/presentations${role === "student" ? "/student" : ""}`, {
+        credentials: "include",
+      }).then(async (response) => {
         const data = await response.json();
 
         if (!response.ok) {
@@ -174,7 +179,7 @@ export default function MiniAcademicCalendar() {
     }
 
     setLoading(false);
-  }, []);
+  }, [role]);
 
   useEffect(() => {
     fetchCalendarData();
@@ -201,7 +206,7 @@ export default function MiniAcademicCalendar() {
     return grouped;
   }, [events]);
 
-  const today = new Date();
+  const today = useMemo(() => new Date(), []);
   const todayKey = dateKey(today);
   const selectedKey = dateKey(selectedDate);
 
@@ -229,17 +234,16 @@ export default function MiniAcademicCalendar() {
 
   const selectedEvents = eventsByDate[selectedKey] || [];
 
-  const upcomingEvents = useMemo(() => {
-    const todayStart = new Date(
-      today.getFullYear(),
-      today.getMonth(),
-      today.getDate()
-    );
+  const todayStart = useMemo(
+    () => new Date(today.getFullYear(), today.getMonth(), today.getDate()),
+    [today]
+  );
 
+  const upcomingEvents = useMemo(() => {
     return events
       .filter((event) => event.date >= todayStart)
       .slice(0, 8);
-  }, [events]);
+  }, [events, todayStart]);
 
   const changeMonth = (amount) => {
     const nextMonth = new Date(
@@ -464,7 +468,8 @@ export default function MiniAcademicCalendar() {
             {calendarDays.map((date) => {
               const key = dateKey(date);
               const isCurrentMonth =
-                date.getMonth() === currentMonth.getMonth();
+                date.getMonth() === currentMonth.getMonth() &&
+                date.getFullYear() === currentMonth.getFullYear();
 
               const isToday = key === todayKey;
               const isSelected = key === selectedKey;
@@ -474,7 +479,12 @@ export default function MiniAcademicCalendar() {
               return (
                 <button
                   key={key}
-                  onClick={() => setSelectedDate(date)}
+                  onClick={() => {
+                    setSelectedDate(date);
+                    if (!isCurrentMonth) {
+                      setCurrentMonth(new Date(date.getFullYear(), date.getMonth(), 1));
+                    }
+                  }}
                   className={`relative flex min-h-[68px] flex-col items-center border-b border-r border-slate-100 px-1 py-2 transition sm:min-h-[88px] sm:py-3 ${
                     isSelected
                       ? "bg-blue-50 ring-1 ring-inset ring-blue-300"

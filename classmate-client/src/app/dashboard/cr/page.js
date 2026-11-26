@@ -32,6 +32,7 @@ import {
   HomeIcon,
 } from "lucide-react";
 import Swal from "sweetalert2";
+import AcademicCalendar from "@/components/shared/AcademicCalendar";
 import PresentationComponent from "@/components/crDashboard/Presentation";
 import { getPresentationCourses } from "@/lib/presentationStorage";
 import { getCurrentUser, logoutUser, dashboardForRole } from "@/lib/auth";
@@ -51,6 +52,7 @@ import {
 
 const PAGE_TITLES = {
   overview: "Dashboard Overview",
+  calendar: "Academic Calendar",
   notes: "Course Notes",
   announcements: "Announcements",
   presentations: "Presentations",
@@ -60,7 +62,10 @@ const PAGE_TITLES = {
 const NAVIGATION = [
   {
     title: "WORKSPACE",
-    items: [{ id: "overview", label: "Overview", icon: LayoutDashboard }],
+    items: [
+      { id: "overview", label: "Overview", icon: LayoutDashboard },
+      { id: "calendar", label: "Academic Calendar", icon: CalendarDays },
+    ],
   },
   {
     title: "ACADEMIC MANAGEMENT",
@@ -1151,6 +1156,8 @@ export default function CRDashboardPage() {
               </div>
             </section>
           )}
+
+          {activePage === "calendar" && <AcademicCalendar role="cr" />}
 
           {/* ───────── Presentations ───────── */}
           {activePage === "presentations" && <PresentationComponent />}

@@ -29,7 +29,7 @@ import {
   Home,
 } from "lucide-react";
 import PresentationComponent from "@/components/crDashboard/Presentation";
-import MiniAcademicCalendar from "@/components/faculty/MiniAcademicCalendar";
+import AcademicCalendar from "@/components/shared/AcademicCalendar";
 import Swal from "sweetalert2";
 import { getCurrentUser, logoutUser, dashboardForRole } from "@/lib/auth";
 
@@ -1025,7 +1025,7 @@ export default function FacultyDashboardPage() {
           )}
 
           {/* Mini Academic Calendar */}
-          {activePage === "calendar" && <MiniAcademicCalendar />}
+          {activePage === "calendar" && <AcademicCalendar role="faculty" />}
 
           {/* Presentations */}
           {activePage === "presentations" && <PresentationComponent />}

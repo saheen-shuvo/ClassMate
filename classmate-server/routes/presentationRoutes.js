@@ -18,7 +18,7 @@ const router = express.Router();
 const { requireAuth, requireRoles } = require("../middleware/authMiddleware");
 
 // Get all presentation groups
-router.get("/", requireAuth, getPresentations);
+router.get("/", requireAuth, requireRoles("cr", "faculty", "admin"), getPresentations);
 
 router.get("/student", requireAuth, requireRoles("student"), getStudentPresentations);
 router.put("/:id/topics/:topicIndex/select", requireAuth, requireRoles("student"), selectStudentPresentationTopic);
@@ -39,7 +39,7 @@ router.delete("/:id/topics/:topicIndex/unassign", requireAuth, requireRoles("cr"
 router.put("/:id/topics/:topicIndex/submit", requireAuth, requireRoles("student"), submitPresentation);
 
 // Get one presentation group
-router.get("/:id", requireAuth, getPresentationById);
+router.get("/:id", requireAuth, requireRoles("cr", "faculty", "admin"), getPresentationById);
 
 // Create a presentation group
 router.post("/", requireAuth, requireRoles("cr", "faculty", "admin"), createPresentation);
