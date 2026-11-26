@@ -24,19 +24,18 @@ import {
   Home,
   GraduationCap,
   ClipboardList,
-  Search,
   Sparkles,
   Megaphone,
 } from "lucide-react";
 import Swal from "sweetalert2";
 import AcademicCalendar from "@/components/shared/AcademicCalendar";
+import CourseNotesLibrary from "@/components/shared/CourseNotesLibrary";
 import StudentPresentations from "@/components/studentDashboard/Presentations";
 import { getCurrentUser, logoutUser, dashboardForRole } from "@/lib/auth";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
-// These are sample course and note records for the student dashboard UI.
-// Replace them with your student/course and note APIs when those endpoints are ready.
+// Course enrollment is still sample data; note records use the shared API.
 const enrolledCourses = [
   {
     id: "CSE 412",
@@ -64,30 +63,6 @@ const enrolledCourses = [
   },
 ];
 
-const courseNotes = [
-  {
-    id: 1,
-    title: "Introduction to Machine Learning",
-    course: "CSE 412",
-    date: "Nov 05, 2026",
-    type: "PDF",
-  },
-  {
-    id: 2,
-    title: "Operating System - Process Management",
-    course: "CSE 321",
-    date: "Nov 04, 2026",
-    type: "PDF",
-  },
-  {
-    id: 3,
-    title: "Database Management Systems",
-    course: "CSE 331",
-    date: "Nov 02, 2026",
-    type: "PDF",
-  },
-];
-
 export default function StudentDashboardPage() {
   const [activePage, setActivePage] = useState("overview");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -98,7 +73,7 @@ export default function StudentDashboardPage() {
   const [toast, setToast] = useState("");
   const [studentName, setStudentName] = useState("Student");
   const [studentEmail, setStudentEmail] = useState("");
-  const [searchTerm, setSearchTerm] = useState("");
+  const [courseNotes, setCourseNotes] = useState([]);
 
   const showToast = (message) => {
     setToast(message);
@@ -246,14 +221,6 @@ export default function StudentDashboardPage() {
     purple: "bg-purple-50 text-purple-600",
     emerald: "bg-emerald-50 text-emerald-600",
   };
-
-  const filteredNotes = courseNotes.filter((note) => {
-    const search = searchTerm.toLowerCase();
-    return (
-      note.title.toLowerCase().includes(search) ||
-      note.course.toLowerCase().includes(search)
-    );
-  });
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800">
@@ -437,6 +404,8 @@ export default function StudentDashboardPage() {
         </header>
 
         <main className="mx-auto max-w-[1600px] space-y-7 p-4 sm:p-6 lg:p-8">
+          <CourseNotesLibrary hidden={activePage !== "notes"} onNotesChange={setCourseNotes} />
+
           {toast && (
             <div className="flex items-center justify-between rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-xs font-semibold text-blue-700">
               <span>{toast}</span>
@@ -681,54 +650,6 @@ export default function StudentDashboardPage() {
               </div>
               <p className="text-[11px] text-slate-400">
                 Note: Course information is currently sample data. Connect your enrollment API to show each student's actual courses.
-              </p>
-            </section>
-          )}
-
-          {/* Course notes */}
-          {activePage === "notes" && (
-            <section className="space-y-5">
-              <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
-                <div>
-                  <h2 className="text-lg font-bold text-slate-900">Course Notes & Materials</h2>
-                  <p className="mt-1 text-xs text-slate-500">Access learning resources shared by your faculty.</p>
-                </div>
-                <div className="relative w-full sm:max-w-xs">
-                  <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                  <input
-                    type="text"
-                    value={searchTerm}
-                    onChange={(event) => setSearchTerm(event.target.value)}
-                    placeholder="Search notes or course..."
-                    className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-9 pr-3 text-xs outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                  />
-                </div>
-              </div>
-              {filteredNotes.length === 0 ? (
-                <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-10 text-center">
-                  <FileText size={28} className="mx-auto text-slate-300" />
-                  <h3 className="mt-3 text-sm font-bold text-slate-700">No Notes Found</h3>
-                  <p className="mt-1 text-xs text-slate-400">Try another search term.</p>
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                  {filteredNotes.map((note) => (
-                    <div key={note.id} className="rounded-2xl border border-slate-200 bg-white p-5">
-                      <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
-                        <FileText size={21} />
-                      </div>
-                      <h3 className="mt-4 text-sm font-bold text-slate-900">{note.title}</h3>
-                      <p className="mt-2 text-xs text-slate-500">{note.course} · {note.date}</p>
-                      <div className="mt-5 flex items-center justify-between border-t border-slate-100 pt-4">
-                        <span className="rounded-md bg-rose-50 px-2 py-1 text-[10px] font-bold text-rose-600">{note.type}</span>
-                        <span className="text-[10px] text-slate-400">Sample resource</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-              <p className="text-[11px] text-slate-400">
-                Note: These are sample note records. A student notes API and file download links are not present in the supplied code.
               </p>
             </section>
           )}

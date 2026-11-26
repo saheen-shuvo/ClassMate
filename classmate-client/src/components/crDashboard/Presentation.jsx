@@ -61,7 +61,7 @@ const getTopicStatus = (course, topic) => {
 const countByStatus = (course, status) =>
   (course.topics || []).filter((topic) => getTopicStatus(course, topic) === status).length;
 
-export default function PresentationComponent() {
+export default function PresentationComponent({ dashboardPath = "/dashboard/cr" }) {
   const [courses, setCourses] = useState([]);
   const [showModal, setShowModal] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -329,7 +329,8 @@ export default function PresentationComponent() {
             <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
               {filteredCourses.map((course) => {
                 const total = course.topics.length;
-                const detailsHref = `/dashboard/cr/presentations/${encodeURIComponent(course._id)}`;
+                const returnToAdmin = dashboardPath === "/dashboard/admin";
+                const detailsHref = `/dashboard/cr/presentations/${encodeURIComponent(course._id)}${returnToAdmin ? "?returnTo=admin" : ""}`;
                 const locked = countByStatus(course, "locked");
                 const groupCount = Math.ceil(
                   presentationStudents.length / Math.max(1, Number(course.teammates) || 1),

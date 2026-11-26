@@ -22,7 +22,6 @@ import {
   Clock,
   Trash2,
   Sparkles,
-  Upload,
   Megaphone,
   PanelLeftClose,
   PanelLeftOpen,
@@ -30,6 +29,7 @@ import {
 } from "lucide-react";
 import PresentationComponent from "@/components/crDashboard/Presentation";
 import AcademicCalendar from "@/components/shared/AcademicCalendar";
+import CourseNotesLibrary from "@/components/shared/CourseNotesLibrary";
 import Swal from "sweetalert2";
 import { getCurrentUser, logoutUser, dashboardForRole } from "@/lib/auth";
 
@@ -41,29 +41,7 @@ export default function FacultyDashboardPage() {
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [facultyName, setFacultyName] = useState("Faculty");
 
-  const [notes, setNotes] = useState([
-    {
-      id: 1,
-      title: "Introduction to Machine Learning",
-      course: "CSE 412",
-      date: "Nov 05, 2026",
-      size: "2.4 MB",
-    },
-    {
-      id: 2,
-      title: "Operating System - Process Management",
-      course: "CSE 321",
-      date: "Nov 04, 2026",
-      size: "1.8 MB",
-    },
-    {
-      id: 3,
-      title: "Database Management Systems",
-      course: "CSE 331",
-      date: "Nov 02, 2026",
-      size: "3.1 MB",
-    },
-  ]);
+  const [notes, setNotes] = useState([]);
 
   const [announcements, setAnnouncements] = useState([]);
   const [announcementLoading, setAnnouncementLoading] = useState(false);
@@ -140,23 +118,6 @@ export default function FacultyDashboardPage() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-
-    if (modal === "notes") {
-      setNotes((prev) => [
-        {
-          id: Date.now(),
-          title: formData.title,
-          course: formData.course,
-          date: new Date().toLocaleDateString(),
-          size: "Pending upload",
-        },
-        ...prev,
-      ]);
-
-      showToast("Note added successfully!");
-      setModal(null);
-      return;
-    }
 
     if (modal === "announcements") {
       try {
@@ -549,6 +510,8 @@ export default function FacultyDashboardPage() {
 
         {/* Page Content */}
         <main className="mx-auto max-w-[1600px] space-y-7 p-4 sm:p-6 lg:p-8">
+          <CourseNotesLibrary hidden={activePage !== "notes"} onNotesChange={setNotes} />
+
           {/* Toast */}
           {toast && (
             <div className="flex items-center justify-between rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-xs font-semibold text-blue-700">
@@ -596,14 +559,11 @@ export default function FacultyDashboardPage() {
 
                   <div className="flex shrink-0 flex-wrap gap-2">
                     <button
-                      onClick={() => {
-                        navigate("notes");
-                        openModal("notes");
-                      }}
+                      onClick={() => navigate("notes")}
                       className="flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-xs font-bold text-white shadow-sm hover:bg-blue-700"
                     >
-                      <Upload size={16} />
-                      Upload Notes
+                      <FileText size={16} />
+                      Course Notes
                     </button>
 
                     <button
@@ -685,13 +645,10 @@ export default function FacultyDashboardPage() {
                     <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                       {[
                         {
-                          title: "Upload Course Notes",
-                          description: "Share PDFs and lecture materials.",
+                          title: "Browse Course Notes",
+                          description: "Access shared PDFs and lecture materials.",
                           icon: FileText,
-                          action: () => {
-                            navigate("notes");
-                            openModal("notes");
-                          },
+                          action: () => navigate("notes"),
                         },
                         {
                           title: "Post Announcement",
@@ -865,74 +822,6 @@ export default function FacultyDashboardPage() {
             </>
           )}
 
-          {/* Course Notes */}
-          {activePage === "notes" && (
-            <section className="space-y-5">
-              <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
-                <div>
-                  <h2 className="text-lg font-bold text-slate-900">
-                    Course Notes & Materials
-                  </h2>
-                  <p className="mt-1 text-xs text-slate-500">
-                    Manage learning resources for your students.
-                  </p>
-                </div>
-
-                <button
-                  onClick={() => openModal("notes")}
-                  className="flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-bold text-white hover:bg-blue-700"
-                >
-                  <Plus size={16} /> Upload Note
-                </button>
-              </div>
-
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                {notes.map((note) => (
-                  <div
-                    key={note.id}
-                    className="rounded-2xl border border-slate-200 bg-white p-5 transition hover:border-blue-200 hover:shadow-sm"
-                  >
-                    <div className="flex items-start justify-between">
-                      <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
-                        <FileText size={21} />
-                      </div>
-
-                      <button
-                        onClick={() => {
-                          setNotes((prev) =>
-                            prev.filter((item) => item.id !== note.id),
-                          );
-                          showToast("Note removed from demo list.");
-                        }}
-                        className="rounded-lg p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-600"
-                        title="Delete note"
-                      >
-                        <Trash2 size={17} />
-                      </button>
-                    </div>
-
-                    <h3 className="mt-4 text-sm font-bold text-slate-900">
-                      {note.title}
-                    </h3>
-
-                    <p className="mt-2 text-xs text-slate-500">
-                      {note.course} Â· {note.date}
-                    </p>
-
-                    <div className="mt-5 flex items-center justify-between border-t border-slate-100 pt-4">
-                      <span className="text-[11px] text-slate-400">
-                        {note.size}
-                      </span>
-                      <span className="rounded-md bg-rose-50 px-2 py-1 text-[10px] font-bold text-rose-600">
-                        PDF
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </section>
-          )}
-
           {/* Announcements */}
           {activePage === "announcements" && (
             <section className="space-y-5">
@@ -1070,11 +959,7 @@ export default function FacultyDashboardPage() {
           <div className="my-auto w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl">
             <div className="mb-6 flex items-center justify-between">
               <div>
-                <h2 className="text-base font-bold text-slate-900">
-                  {modal === "notes"
-                    ? "Upload Course Note"
-                    : "Create Announcement"}
-                </h2>
+                <h2 className="text-base font-bold text-slate-900">Create Announcement</h2>
                 <p className="mt-1 text-xs text-slate-500">
                   Fill in the information below.
                 </p>
@@ -1110,7 +995,7 @@ export default function FacultyDashboardPage() {
 
               <div>
                 <label className="mb-1.5 block text-xs font-semibold text-slate-700">
-                  {modal === "notes" ? "Note Title" : "Announcement Title"}
+                  Announcement Title
                 </label>
 
                 <input
@@ -1151,7 +1036,7 @@ export default function FacultyDashboardPage() {
                 </label>
 
                 <textarea
-                  required={modal === "announcements"}
+                  required
                   rows={4}
                   value={formData.description}
                   onChange={(e) =>
@@ -1179,11 +1064,7 @@ export default function FacultyDashboardPage() {
                   disabled={announcementSubmitting}
                   className="rounded-xl bg-blue-600 px-5 py-2.5 text-xs font-bold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  {announcementSubmitting
-                    ? "Publishing..."
-                    : modal === "notes"
-                      ? "Add Note"
-                      : "Publish Announcement"}
+                  {announcementSubmitting ? "Publishing..." : "Publish Announcement"}
                 </button>
               </div>
             </form>

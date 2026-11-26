@@ -10,20 +10,47 @@ const getOverview = async (req, res) => {
     const db = getDB();
     const users = db.collection("users");
 
-    const [totalUsers, students, faculty, crs, admins, recentUsers, announcements, assignments] =
+    const [
+      totalUsers,
+      students,
+      faculty,
+      crs,
+      admins,
+      announcementCount,
+      assignmentCount,
+      presentationCount,
+      courseNoteCount,
+      recentUsers,
+      announcements,
+      assignments,
+    ] =
       await Promise.all([
         users.countDocuments({}),
         users.countDocuments({ role: "student" }),
         users.countDocuments({ role: "faculty" }),
         users.countDocuments({ role: "cr" }),
         users.countDocuments({ role: "admin" }),
+        db.collection("announcements").countDocuments({}),
+        db.collection("assignments").countDocuments({}),
+        db.collection("presentations").countDocuments({}),
+        db.collection("courseNotes").countDocuments({}),
         users.find({}).sort({ createdAt: -1 }).limit(5).toArray(),
         db.collection("announcements").find({}).sort({ createdAt: -1 }).limit(5).toArray(),
         db.collection("assignments").find({}).sort({ createdAt: -1 }).limit(5).toArray(),
       ]);
 
     res.status(200).json({
-      counts: { totalUsers, students, faculty, crs, admins },
+      counts: {
+        totalUsers,
+        students,
+        faculty,
+        crs,
+        admins,
+        announcements: announcementCount,
+        assignments: assignmentCount,
+        presentations: presentationCount,
+        courseNotes: courseNoteCount,
+      },
       recentUsers: recentUsers.map(safeUser),
       recentAnnouncements: announcements,
       recentAssignments: assignments,
@@ -99,6 +126,19 @@ const updateUser = async (req, res) => {
 
     if (String(existing._id) === req.user._id && req.body.role && req.body.role !== existing.role)
       return res.status(409).json({ message: "You cannot change your own role." });
+    if (String(existing._id) === req.user._id && req.body.active === false)
+      return res.status(409).json({ message: "You cannot disable your own account." });
+    if (
+      existing.role === "admin" &&
+      existing.active !== false &&
+      req.body.active === false &&
+      (await db.collection("users").countDocuments({
+        role: "admin",
+        active: { $ne: false },
+      })) <= 1
+    ) {
+      return res.status(409).json({ message: "You cannot disable the last active admin account." });
+    }
 
     const updates = {};
     if (typeof req.body.name === "string" && req.body.name.trim())
@@ -117,8 +157,11 @@ const updateUser = async (req, res) => {
         return res.status(400).json({ message: "Invalid account role." });
       updates.role = role;
     }
-    if (typeof req.body.active === "boolean")
+    if (typeof req.body.active === "boolean") {
       updates.active = req.body.active;
+      if (req.body.active !== (existing.active !== false))
+        updates.authVersion = (Number(existing.authVersion) || 0) + 1;
+    }
     if (typeof req.body.password === "string" && req.body.password.length > 0) {
       if (req.body.password.length < 8)
         return res.status(400).json({ message: "Password must be at least 8 characters." });

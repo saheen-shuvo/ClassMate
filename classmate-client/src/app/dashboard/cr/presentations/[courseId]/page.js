@@ -5,7 +5,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import {
   ArrowLeft,
   BookOpen,
@@ -76,6 +76,10 @@ const formatDay = (date) => {
 export default function PresentationDetailsPage() {
   const params = useParams();
   const courseId = decodeURIComponent(params.courseId);
+  const returnToAdmin = useSearchParams().get("returnTo") === "admin";
+  const presentationsHref = returnToAdmin
+    ? "/dashboard/admin#presentations"
+    : "/dashboard/cr#presentations";
 
   const [course, setCourse] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -503,7 +507,7 @@ export default function PresentationDetailsPage() {
           <h2 className="mt-4 font-semibold text-slate-900">Course not found</h2>
           <p className="mt-2 text-sm text-slate-500">This presentation group may have been deleted.</p>
           <Link
-            href="/dashboard/cr#presentations"
+            href={presentationsHref}
             className="mt-5 inline-flex rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700"
           >
             Back to Presentations
@@ -535,7 +539,7 @@ export default function PresentationDetailsPage() {
     <div className="min-h-screen bg-white p-4 sm:p-6 lg:p-8">
       <div className="mx-auto max-w-7xl space-y-6">
         <Link
-          href="/dashboard/cr#presentations"
+          href={presentationsHref}
           className="inline-flex items-center gap-2 text-sm font-medium text-slate-500 transition hover:text-blue-600"
         >
           <ArrowLeft size={17} />

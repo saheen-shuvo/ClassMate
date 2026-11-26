@@ -65,6 +65,7 @@ const login = async (req, res) => {
       return res.status(401).json({ message: "Invalid email or password." });
 
     req.session.userId = String(user._id);
+    req.session.authVersion = Number(user.authVersion) || 0;
     req.session.save((error) => {
       if (error) {
         console.error("Session save error:", error);

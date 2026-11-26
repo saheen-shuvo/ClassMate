@@ -26,6 +26,12 @@ const requireAuth = async (req, res, next) => {
     if (!user) {
       return res.status(401).json({ message: "Authenticated user no longer exists." });
     }
+    if (
+      user.active === false ||
+      (Number(req.session.authVersion) || 0) !== (Number(user.authVersion) || 0)
+    ) {
+      return res.status(401).json({ message: "This account is disabled or its session has expired." });
+    }
 
     req.user = safeUser(user);
     next();

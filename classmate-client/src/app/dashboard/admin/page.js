@@ -28,6 +28,10 @@ import {
 } from "lucide-react";
 import Swal from "sweetalert2";
 import AcademicCalendar from "@/components/shared/AcademicCalendar";
+import CourseNotesLibrary from "@/components/shared/CourseNotesLibrary";
+import AnnouncementManagement from "@/components/admin/AnnouncementManagement";
+import AssignmentManagement from "@/components/faculty/AssignmentManagement";
+import PresentationComponent from "@/components/crDashboard/Presentation";
 import {
   getCurrentUser,
   logoutUser,
@@ -38,8 +42,6 @@ import {
   updateAdminUser,
   dashboardForRole,
 } from "@/lib/auth";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5001";
 
 const roleLabels = {
   student: "Student",
@@ -65,8 +67,6 @@ export default function AdminDashboardPage() {
   const [user, setUser] = useState(null);
   const [overview, setOverview] = useState(null);
   const [users, setUsers] = useState([]);
-  const [announcements, setAnnouncements] = useState([]);
-  const [assignments, setAssignments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
@@ -83,13 +83,6 @@ export default function AdminDashboardPage() {
       const [overviewData, usersData] = await Promise.all([getAdminOverview(), getAdminUsers()]);
       setOverview(overviewData);
       setUsers(usersData);
-
-      const [announcementResponse, assignmentResponse] = await Promise.all([
-        fetch(`${API_URL}/api/announcements`, { credentials: "include" }),
-        fetch(`${API_URL}/api/assignments`, { credentials: "include" }),
-      ]);
-      setAnnouncements(announcementResponse.ok ? await announcementResponse.json() : []);
-      setAssignments(assignmentResponse.ok ? await assignmentResponse.json() : []);
     } catch (requestError) {
       setError(requestError.message || "Failed to load admin data.");
     } finally {
@@ -110,7 +103,7 @@ export default function AdminDashboardPage() {
       .catch(() => { window.location.href = "/login"; });
 
     const hash = window.location.hash.replace("#", "");
-    if (["overview", "users", "students", "faculty", "cr", "announcements", "assignments", "profile"].includes(hash))
+    if (["overview", "calendar", "users", "students", "faculty", "cr", "announcements", "assignments", "notes", "presentations", "profile"].includes(hash))
       setActivePage(hash);
   }, []);
 
@@ -236,6 +229,8 @@ export default function AdminDashboardPage() {
     { title: "CONTENT", items: [
       { id: "announcements", label: "Announcements", icon: Bell },
       { id: "assignments", label: "Assignments", icon: ClipboardList },
+      { id: "notes", label: "Course Notes", icon: BookOpen },
+      { id: "presentations", label: "Presentations", icon: Presentation },
       { id: "profile", label: "Profile", icon: UserRound },
     ] },
   ];
@@ -246,6 +241,13 @@ export default function AdminDashboardPage() {
     { title: "Faculty", value: overview?.counts?.faculty, icon: Presentation, color: "indigo" },
     { title: "CRs", value: overview?.counts?.crs, icon: ShieldCheck, color: "purple" },
     { title: "Administrators", value: overview?.counts?.admins, icon: UserRound, color: "amber" },
+  ];
+
+  const academicCards = [
+    { title: "Announcements", value: overview?.counts?.announcements, icon: Bell, color: "amber" },
+    { title: "Assignments", value: overview?.counts?.assignments, icon: ClipboardList, color: "blue" },
+    { title: "Presentation Groups", value: overview?.counts?.presentations, icon: Presentation, color: "indigo" },
+    { title: "Course Notes", value: overview?.counts?.courseNotes, icon: BookOpen, color: "emerald" },
   ];
 
   const colorStyles = {
@@ -299,22 +301,29 @@ export default function AdminDashboardPage() {
           {activePage === "overview" && <>
             <section className="rounded-2xl border border-blue-100 bg-white p-6 sm:p-8"><p className="mb-3 text-[10px] font-bold text-blue-700">ADMIN WORKSPACE</p><h2 className="text-2xl font-extrabold text-slate-900 sm:text-3xl">Welcome back, {user?.name || "Admin"}!</h2><p className="mt-2 text-sm text-slate-500">{user?.name} · {roleLabels[user?.role] || "Administrator"}</p></section>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">{roleCards.map(card=>{const Icon=card.icon;return <div key={card.title} className="rounded-2xl border border-slate-200 bg-white p-5"><div className={`flex h-10 w-10 items-center justify-center rounded-xl ${colorStyles[card.color]}`}><Icon size={20}/></div><p className="mt-5 text-xs text-slate-500">{card.title}</p><p className="mt-1 text-3xl font-extrabold text-slate-900">{String(card.value ?? 0).padStart(2,"0")}</p></div>})}</div>
+            <section>
+              <h3 className="mb-3 text-sm font-bold text-slate-700">Academic Resources</h3>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">{academicCards.map(card=>{const Icon=card.icon;return <div key={card.title} className="rounded-2xl border border-slate-200 bg-white p-5"><div className={`flex h-10 w-10 items-center justify-center rounded-xl ${colorStyles[card.color]}`}><Icon size={20}/></div><p className="mt-5 text-xs text-slate-500">{card.title}</p><p className="mt-1 text-2xl font-extrabold text-slate-900">{String(card.value ?? 0).padStart(2,"0")}</p></div>})}</div>
+            </section>
             <div className="grid gap-5 xl:grid-cols-2">
               <section className="rounded-2xl border border-slate-200 bg-white p-5"><h3 className="text-sm font-bold text-slate-900">Recently Registered Users</h3><div className="mt-4 space-y-3">{overview?.recentUsers?.length ? overview.recentUsers.map(account=> <div key={account._id} className="flex items-center justify-between border-b border-slate-100 pb-3"><div><p className="text-xs font-bold text-slate-800">{account.name}</p><p className="text-[11px] text-slate-400">{account.email}</p></div><span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-600">{roleLabels[account.role]}</span></div>) : <p className="text-xs text-slate-400">No registered users.</p>}</div></section>
               <section className="rounded-2xl border border-slate-200 bg-white p-5"><h3 className="text-sm font-bold text-slate-900">Recent Announcements</h3><div className="mt-4 space-y-3">{overview?.recentAnnouncements?.length ? overview.recentAnnouncements.map(item=> <div key={item._id} className="border-b border-slate-100 pb-3"><p className="text-xs font-bold text-slate-800">{item.title}</p><p className="mt-1 text-[11px] text-slate-400">{item.course || "General"} · {formatDate(item.createdAt)}</p></div>) : <p className="text-xs text-slate-400">No announcements.</p>}</div></section>
+              <section className="rounded-2xl border border-slate-200 bg-white p-5"><h3 className="text-sm font-bold text-slate-900">Recent Assignments</h3><div className="mt-4 space-y-3">{overview?.recentAssignments?.length ? overview.recentAssignments.map(item=> <div key={item._id} className="border-b border-slate-100 pb-3"><p className="text-xs font-bold text-slate-800">{item.title}</p><p className="mt-1 text-[11px] text-slate-400">{item.course || "General"} · Due {formatDate(item.dueDate)}</p></div>) : <p className="text-xs text-slate-400">No assignments.</p>}</div></section>
             </div>
           </>}
 
           {activePage === "calendar" && <AcademicCalendar role="admin" />}
+          {activePage === "announcements" && <AnnouncementManagement />}
+          {activePage === "assignments" && <AssignmentManagement />}
+          {activePage === "notes" && <CourseNotesLibrary canManage />}
+          {activePage === "presentations" && <PresentationComponent dashboardPath="/dashboard/admin" />}
 
           {["users","students","faculty","cr"].includes(activePage) && <section className="space-y-5">
             <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center"><div><h2 className="text-lg font-bold text-slate-900">{activePage==="users" ? "User Management" : activePage==="students" ? "Students" : activePage==="faculty" ? "Faculty" : "Class Representatives"}</h2><p className="mt-1 text-xs text-slate-500">Manage accounts stored in the MongoDB users collection.</p></div><button onClick={openCreate} className="flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-bold text-white hover:bg-blue-700"><Plus size={15}/>Create account</button></div>
             <div className="grid gap-3 md:grid-cols-[1fr_auto]"><label className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5"><Search size={16} className="text-slate-400"/><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search name or email..." className="w-full bg-transparent text-xs outline-none"/></label>{activePage==="users" && <select value={roleFilter} onChange={e=>setRoleFilter(e.target.value)} className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs"><option value="all">All roles</option><option value="student">Students</option><option value="faculty">Faculty</option><option value="cr">CRs</option><option value="admin">Admins</option></select>}</div>
-            {loading ? <div className="h-64 animate-pulse rounded-2xl bg-slate-200"/> : <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white"><table className="w-full min-w-190 text-left"><thead className="border-b border-slate-100 text-[10px] uppercase tracking-wider text-slate-400"><tr><th className="px-5 py-4">Name</th><th className="px-5 py-4">Email</th><th className="px-5 py-4">Role</th><th className="px-5 py-4">Student ID</th><th className="px-5 py-4">Registered</th><th className="px-5 py-4">Actions</th></tr></thead><tbody>{filteredUsers.length ? filteredUsers.map(account=><tr key={account._id} className="border-b border-slate-50 last:border-0"><td className="px-5 py-4"><div className="flex items-center gap-3"><div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-50 text-xs font-bold text-blue-700">{initials(account.name)}</div><div><p className="text-xs font-bold text-slate-800">{account.name}</p>{account.active===false && <span className="text-[10px] font-bold text-rose-600">Disabled</span>}</div></div></td><td className="px-5 py-4 text-xs text-slate-500">{account.email}</td><td className="px-5 py-4"><span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-600">{roleLabels[account.role]}</span></td><td className="px-5 py-4 text-xs text-slate-500">{account.studentId || "—"}</td><td className="px-5 py-4 text-xs text-slate-500">{formatDate(account.createdAt)}</td><td className="px-5 py-4"><div className="flex gap-2"><button onClick={()=>openEdit(account)} className="rounded-lg p-2 text-slate-400 hover:bg-blue-50 hover:text-blue-700" title="Edit user"><Pencil size={15}/></button><button onClick={()=>toggleActive(account)} className={`rounded-lg px-2.5 py-1.5 text-[10px] font-bold ${account.active===false?"bg-emerald-50 text-emerald-700":"bg-rose-50 text-rose-600"}`}>{account.active===false?"Activate":"Disable"}</button></div></td></tr>):<tr><td colSpan="6" className="px-5 py-10 text-center text-xs text-slate-400">No matching users.</td></tr>}</tbody></table></div>}
+            {loading ? <div className="h-64 animate-pulse rounded-2xl bg-slate-200"/> : <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white"><table className="w-full min-w-190 text-left"><thead className="border-b border-slate-100 text-[10px] uppercase tracking-wider text-slate-400"><tr><th className="px-5 py-4">Name</th><th className="px-5 py-4">Email</th><th className="px-5 py-4">Role</th><th className="px-5 py-4">Student ID</th><th className="px-5 py-4">Registered</th><th className="px-5 py-4">Actions</th></tr></thead><tbody>{filteredUsers.length ? filteredUsers.map(account=><tr key={account._id} className="border-b border-slate-50 last:border-0"><td className="px-5 py-4"><div className="flex items-center gap-3"><div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-50 text-xs font-bold text-blue-700">{initials(account.name)}</div><div><p className="text-xs font-bold text-slate-800">{account.name}</p>{account.active===false && <span className="text-[10px] font-bold text-rose-600">Disabled</span>}</div></div></td><td className="px-5 py-4 text-xs text-slate-500">{account.email}</td><td className="px-5 py-4"><span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-600">{roleLabels[account.role]}</span></td><td className="px-5 py-4 text-xs text-slate-500">{account.studentId || "—"}</td><td className="px-5 py-4 text-xs text-slate-500">{formatDate(account.createdAt)}</td><td className="px-5 py-4"><div className="flex gap-2"><button onClick={()=>openEdit(account)} className="rounded-lg p-2 text-slate-400 hover:bg-blue-50 hover:text-blue-700" title="Edit user"><Pencil size={15}/></button><button onClick={()=>toggleActive(account)} disabled={account._id === user?._id} className={`rounded-lg px-2.5 py-1.5 text-[10px] font-bold disabled:cursor-not-allowed disabled:opacity-50 ${account.active===false?"bg-emerald-50 text-emerald-700":"bg-rose-50 text-rose-600"}`} title={account._id === user?._id ? "You cannot disable your own account" : ""}>{account.active===false?"Activate":"Disable"}</button></div></td></tr>):<tr><td colSpan="6" className="px-5 py-10 text-center text-xs text-slate-400">No matching users.</td></tr>}</tbody></table></div>}
           </section>}
 
-          {activePage==="announcements" && <section className="space-y-4"><div><h2 className="text-lg font-bold text-slate-900">Announcements</h2><p className="mt-1 text-xs text-slate-500">Recent MongoDB announcements.</p></div>{announcements.length ? announcements.map(item=><article key={item._id} className="rounded-2xl border border-slate-200 bg-white p-5"><p className="text-sm font-bold text-slate-900">{item.title}</p><p className="mt-2 text-xs text-slate-500">{item.description}</p><p className="mt-3 text-[10px] text-slate-400">{item.course || "General"} · {formatDate(item.createdAt)}</p></article>):<div className="rounded-2xl border border-dashed border-slate-300 bg-white p-10 text-center text-xs text-slate-400">No announcements.</div>}</section>}
-          {activePage==="assignments" && <section className="space-y-4"><div><h2 className="text-lg font-bold text-slate-900">Assignments</h2><p className="mt-1 text-xs text-slate-500">Recent MongoDB assignments.</p></div>{assignments.length ? assignments.map(item=><article key={item._id} className="rounded-2xl border border-slate-200 bg-white p-5"><p className="text-sm font-bold text-slate-900">{item.title}</p><p className="mt-2 text-xs text-slate-500">{item.description}</p><p className="mt-3 text-[10px] text-slate-400">{item.course} · Due {formatDate(item.dueDate)}</p></article>):<div className="rounded-2xl border border-dashed border-slate-300 bg-white p-10 text-center text-xs text-slate-400">No assignments.</div>}</section>}
           {activePage==="profile" && <section className="max-w-2xl rounded-2xl border border-slate-200 bg-white p-6"><div className="flex items-center gap-4 border-b border-slate-100 pb-6"><div className="flex h-14 w-14 items-center justify-center rounded-full bg-blue-100 text-xl font-bold text-blue-700">{initials(user?.name)}</div><div><h2 className="text-base font-bold text-slate-900">{user?.name}</h2><p className="mt-1 text-xs text-slate-500">{roleLabels[user?.role]}</p></div></div><dl className="grid gap-4 py-6 sm:grid-cols-2"><div><dt className="text-[10px] font-bold uppercase text-slate-400">Email</dt><dd className="mt-1 text-sm text-slate-700">{user?.email}</dd></div><div><dt className="text-[10px] font-bold uppercase text-slate-400">Registered</dt><dd className="mt-1 text-sm text-slate-700">{formatDate(user?.createdAt)}</dd></div></dl><form onSubmit={saveProfile} className="space-y-4"><div><label className="mb-2 block text-xs font-bold text-slate-600">Full name</label><input value={profileForm.name} onChange={e=>setProfileForm({...profileForm,name:e.target.value})} required className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm"/></div><div><label className="mb-2 block text-xs font-bold text-slate-600">Student ID</label><input value={profileForm.studentId} onChange={e=>setProfileForm({...profileForm,studentId:e.target.value})} className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm"/></div><button disabled={saving} className="rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-bold text-white">{saving?"Saving...":"Save profile"}</button></form></section>}
         </main>
       </div>

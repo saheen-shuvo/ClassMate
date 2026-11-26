@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Plus,
   Search,
@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 import Swal from "sweetalert2";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5001";
 
 const COURSES = [
   { value: "CSE 412", label: "CSE 412 - Machine Learning" },
@@ -62,18 +62,19 @@ export default function AssignmentManagement({
   const [assignments, setAssignments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
-  const [modalOpen, setModalOpen] = useState(false);
+  const [modalOpen, setModalOpen] = useState(openCreateOnMount);
   const [editingId, setEditingId] = useState(null);
   const [search, setSearch] = useState("");
   const [courseFilter, setCourseFilter] = useState("All");
   const [statusFilter, setStatusFilter] = useState("All");
   const [form, setForm] = useState(INITIAL_FORM);
+  const onCreateModalHandledRef = useRef(onCreateModalHandled);
 
   const fetchAssignments = useCallback(async () => {
     try {
-      setLoading(true);
-
-      const response = await fetch(`${API_URL}/api/assignments`);
+      const response = await fetch(`${API_URL}/api/assignments`, {
+        credentials: "include",
+      });
       const data = await response.json();
 
       if (!response.ok) {
@@ -95,19 +96,17 @@ export default function AssignmentManagement({
   }, []);
 
   useEffect(() => {
-    fetchAssignments();
+    void Promise.resolve().then(fetchAssignments);
   }, [fetchAssignments]);
 
   // Automatically open Create Assignment modal from Quick Actions
   useEffect(() => {
-    if (!openCreateOnMount) return;
+    onCreateModalHandledRef.current = onCreateModalHandled;
+  }, [onCreateModalHandled]);
 
-    setEditingId(null);
-    setForm({ ...INITIAL_FORM });
-    setModalOpen(true);
-
-    onCreateModalHandled?.();
-  }, [openCreateOnMount, onCreateModalHandled]);
+  useEffect(() => {
+    if (openCreateOnMount) onCreateModalHandledRef.current?.();
+  }, [openCreateOnMount]);
 
   const openCreateModal = () => {
     setEditingId(null);
@@ -173,6 +172,7 @@ export default function AssignmentManagement({
 
       const response = await fetch(url, {
         method: isEditing ? "PUT" : "POST",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...form,
@@ -233,6 +233,7 @@ export default function AssignmentManagement({
     try {
       const response = await fetch(`${API_URL}/api/assignments/${id}`, {
         method: "DELETE",
+        credentials: "include",
       });
 
       const data = await response.json();
