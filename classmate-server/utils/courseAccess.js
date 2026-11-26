@@ -1,5 +1,27 @@
 const { ObjectId } = require("mongodb");
 
+const normalizeCourseLabel = (value) =>
+  typeof value === "string" ? value.trim().toLowerCase().replace(/\s+/g, " ") : "";
+
+const courseLabels = (course) => [
+  course.courseCode,
+  course.title,
+  course.courseCode && course.title ? `${course.courseCode} - ${course.title}` : null,
+].filter((label) => typeof label === "string").map(normalizeCourseLabel).filter(Boolean);
+
+const resolveLegacyCourseFromCourses = (courses, labels) => {
+  const normalizedLabels = new Set(labels.map(normalizeCourseLabel).filter(Boolean));
+  if (!normalizedLabels.size) return { course: null, ambiguous: false };
+
+  const matches = courses.filter((course) =>
+    courseLabels(course).some((label) => normalizedLabels.has(label)),
+  );
+  return {
+    course: matches.length === 1 ? matches[0] : null,
+    ambiguous: matches.length > 1,
+  };
+};
+
 const isCourseMember = (course, user) => {
   if (!course || !user) return false;
   const userId = String(user._id);
@@ -32,16 +54,81 @@ const courseIdsForUser = async (db, user, { includeInactive = false } = {}) => {
   return courses.map((course) => course._id);
 };
 
-const resourceVisibilityFilter = async (db, user) => {
+const resourceVisibilityFilter = async (
+  db,
+  user,
+  {
+    collectionName,
+    legacyLabelFields = [],
+    legacyOwnerField = null,
+  } = {},
+) => {
+  if (user.role === "admin") return {};
   const courseIds = await courseIdsForUser(db, user);
-  if (courseIds === null) return {};
+  const visibleLegacyIds = [];
+
+  if (collectionName && (legacyLabelFields.length || legacyOwnerField)) {
+    const [activeCourses, legacyResources] = await Promise.all([
+      db.collection("courses").find({ status: "active" }).toArray(),
+      db.collection(collectionName).find({
+        $or: [{ courseId: { $exists: false } }, { courseId: null }, { courseId: "" }],
+      }).toArray(),
+    ]);
+
+    for (const resource of legacyResources) {
+      const labels = legacyLabelFields.map((field) =>
+        field.split(".").reduce((value, part) => value?.[part], resource),
+      ).filter((value) => typeof value === "string");
+      const { course } = resolveLegacyCourseFromCourses(activeCourses, labels);
+      const isMemberOfUniqueCourse = course && canReadLinkedCourse(course, user);
+      const isLegacyOwner = legacyOwnerField &&
+        String(legacyOwnerField.split(".").reduce((value, part) => value?.[part], resource)) === String(user._id);
+
+      if (isMemberOfUniqueCourse || isLegacyOwner) visibleLegacyIds.push(resource._id);
+    }
+  }
 
   return {
     $or: [
       { courseId: { $in: courseIds } },
-      { courseId: { $exists: false } },
-      { courseId: null },
+      { _id: { $in: visibleLegacyIds } },
     ],
+  };
+};
+
+const findLegacyCourseMatches = async (db, labels) => {
+  const normalizedLabels = new Set(labels.map(normalizeCourseLabel).filter(Boolean));
+  if (!normalizedLabels.size) return [];
+  const courses = await db.collection("courses").find({ status: "active" }).toArray();
+  return courses.filter((course) =>
+    courseLabels(course).some((label) => normalizedLabels.has(label)),
+  );
+};
+
+const resolveLegacyCourse = async (db, labels) => {
+  const matches = await findLegacyCourseMatches(db, labels);
+  return { course: matches.length === 1 ? matches[0] : null, ambiguous: matches.length > 1 };
+};
+
+const canManageLegacyResource = async (db, resource, user, labelFields) => {
+  if (user.role === "admin") return { authorized: true, course: null };
+  const labels = labelFields.map((field) => resource[field]).filter((value) => typeof value === "string");
+  const { course, ambiguous } = await resolveLegacyCourse(db, labels);
+  return {
+    authorized: Boolean(course && canManageLinkedCourse(course, user)),
+    course,
+    ambiguous,
+  };
+};
+
+const canReadLegacyResource = async (db, resource, user, labelFields) => {
+  if (user.role === "admin") return { authorized: true, course: null };
+  const labels = labelFields.map((field) => resource[field]).filter((value) => typeof value === "string");
+  const { course, ambiguous } = await resolveLegacyCourse(db, labels);
+  return {
+    authorized: Boolean(course && canReadLinkedCourse(course, user)),
+    course,
+    ambiguous,
   };
 };
 
@@ -51,8 +138,9 @@ const getLinkedCourse = async (db, courseId) => {
 };
 
 const canReadLinkedCourse = (course, user) => {
-  if (!course || !user) return false;
+  if (!user) return false;
   if (user.role === "admin") return true;
+  if (!course) return false;
   return course.status === "active" && isCourseMember(course, user);
 };
 
@@ -66,8 +154,9 @@ const canViewCourseRecord = (course, user) => {
 };
 
 const canManageLinkedCourse = (course, user) => {
-  if (!course || !user) return false;
+  if (!user) return false;
   if (user.role === "admin") return true;
+  if (!course) return false;
   return (
     course.status === "active" &&
     ((user.role === "faculty" && String(course.facultyId) === String(user._id)) ||
@@ -121,12 +210,15 @@ const enrichCourseLabels = async (db, resources) => {
 
 module.exports = {
   canManageLinkedCourse,
+  canManageLegacyResource,
   canReadLinkedCourse,
+  canReadLegacyResource,
   canViewCourseRecord,
   courseIdsForUser,
   enrichCourseLabels,
   getLinkedCourse,
   isCourseMember,
+  resolveLegacyCourse,
   resourceVisibilityFilter,
   resolveCourseForResourceWrite,
 };

@@ -1,7 +1,9 @@
 const { getDB } = require("../config/db");
 const { ObjectId } = require("mongodb");
 const {
+  canManageLegacyResource,
   canManageLinkedCourse,
+  canReadLegacyResource,
   canReadLinkedCourse,
   getLinkedCourse,
   resourceVisibilityFilter,
@@ -15,15 +17,31 @@ const getStudentIdentity = (req) => {
   return req.user?.email?.trim().toLowerCase() || null;
 };
 
+const selectionVersionFilter = (presentation) =>
+  presentation.selectionVersion === undefined || presentation.selectionVersion === null
+    ? { $or: [{ selectionVersion: { $exists: false } }, { selectionVersion: null }] }
+    : { selectionVersion: presentation.selectionVersion };
+
 const presentationAccessError = async (db, presentation, user, canManage = false) => {
-  if (!presentation.courseId) return null;
-  const course = await getLinkedCourse(db, presentation.courseId);
-  const permitted = canManage
-    ? canManageLinkedCourse(course, user)
-    : canReadLinkedCourse(course, user);
+  let permitted;
+  if (presentation.courseId) {
+    const course = await getLinkedCourse(db, presentation.courseId);
+    permitted = canManage
+      ? canManageLinkedCourse(course, user)
+      : canReadLinkedCourse(course, user);
+  } else {
+    const checkAccess = canManage ? canManageLegacyResource : canReadLegacyResource;
+    const access = await checkAccess(
+      db,
+      presentation,
+      user,
+      ["course", "courseName", "normalizedName"],
+    );
+    permitted = access.authorized;
+  }
   return permitted
     ? null
-    : { status: course ? 403 : 404, message: "You do not have access to this course presentation." };
+    : { status: 403, message: "You do not have access to this course presentation." };
 };
 
 const acquireAssignmentLock = async (key) => {
@@ -122,59 +140,14 @@ const addCourseInformation = async (db, presentations) => {
   });
 };
 
-const migratePresentations = async (db) => {
-  const docs = await db.collection(COLLECTION).find({}).toArray();
-  for (const presentation of docs) {
-    const topicCount = Array.isArray(presentation.topics) ? presentation.topics.length : 0;
-    const maxStudentsPerTopic =
-      Number.isInteger(presentation.maxStudentsPerTopic) && presentation.maxStudentsPerTopic >= 1
-        ? presentation.maxStudentsPerTopic
-        : 1;
-    const maxTopicsPerStudent = 1;
-
-    const topics = (presentation.topics || []).map((topic) => {
-      let selections = Array.isArray(topic.selections)
-        ? topic.selections.filter((selection) => selection && selection.id)
-        : [];
-      if (topic.selectedBy?.id) {
-        const oldId = String(topic.selectedBy.id);
-        if (!selections.some((selection) => String(selection.id) === oldId)) {
-          selections = [...selections, {
-            id: oldId,
-            name: topic.selectedBy.name || "",
-            selectedAt: topic.submission?.submittedAt || topic.selectedAt || null,
-            submission: topic.submission || null,
-          }];
-        }
-      } else if (topic.submission?.studentId) {
-        selections = selections.map((selection) =>
-          String(selection.id) === String(topic.submission.studentId) && !selection.submission
-            ? { ...selection, submission: topic.submission }
-            : selection,
-        );
-      }
-
-      const migrated = { ...topic, locked: topic.locked === true, selections };
-      delete migrated.status;
-      delete migrated.selectedBy;
-      delete migrated.submission;
-      return migrated;
-    });
-
-    await db.collection(COLLECTION).updateOne(
-      { _id: presentation._id },
-      { $set: { maxStudentsPerTopic, maxTopicsPerStudent, topics, selectionVersion: presentation.selectionVersion || 0 } },
-    );
-  }
-};
-
 // GET: Get all presentation groups
 const getPresentations = async (req, res) => {
   try {
     const db = getDB();
-    await migratePresentations(db);
-
-    const filter = await resourceVisibilityFilter(db, req.user);
+    const filter = await resourceVisibilityFilter(db, req.user, {
+      collectionName: COLLECTION,
+      legacyLabelFields: ["course", "courseName", "normalizedName"],
+    });
     const presentations = await db
       .collection(COLLECTION)
       .find(filter)
@@ -203,7 +176,6 @@ const getPresentationById = async (req, res) => {
       });
     }
 
-    await migratePresentations(db);
     const presentation = await db
       .collection(COLLECTION)
       .findOne({ _id: new ObjectId(id) });
@@ -233,8 +205,10 @@ const getStudentPresentations = async (req, res) => {
     if (!studentId) return res.status(401).json({ message: "Student authentication is required." });
 
     const db = getDB();
-    await migratePresentations(db);
-    const filter = await resourceVisibilityFilter(db, req.user);
+    const filter = await resourceVisibilityFilter(db, req.user, {
+      collectionName: COLLECTION,
+      legacyLabelFields: ["course", "courseName", "normalizedName"],
+    });
     const presentations = await db.collection(COLLECTION).find(filter).sort({ createdAt: -1 }).toArray();
 
     const enrichedPresentations = await addCourseInformation(db, presentations);
@@ -277,7 +251,6 @@ const selectStudentPresentationTopic = async (req, res) => {
     const releaseStudentLock = await acquireAssignmentLock(studentLockKey);
     const releaseTopicLock = await acquireAssignmentLock(topicLockKey);
     try {
-      await migratePresentations(db);
       const presentation = await db.collection(COLLECTION).findOne({ _id: new ObjectId(id) });
       if (!presentation) return res.status(404).json({ message: "Presentation group not found." });
       const accessError = await presentationAccessError(db, presentation, req.user);
@@ -302,7 +275,7 @@ const selectStudentPresentationTopic = async (req, res) => {
       const result = await db.collection(COLLECTION).updateOne(
         {
           _id: new ObjectId(id),
-          selectionVersion: presentation.selectionVersion || 0,
+          ...selectionVersionFilter(presentation),
           [`topics.${index}.locked`]: { $ne: true },
           [`topics.${index}.selections.id`]: { $ne: studentId },
           "topics.selections.id": { $ne: studentId },
@@ -480,15 +453,12 @@ const assignPresentationTopic = async (req, res) => {
       });
     }
 
-    await migratePresentations(db);
-
     let studentId = String(selectedBy.id).trim();
     let studentName = selectedBy.name.trim();
     const courseObjectId = new ObjectId(id);
     const lockKey = `${id}:${index}`;
     const releaseLock = await acquireAssignmentLock(lockKey);
     try {
-      await migratePresentations(db);
       const course = await db.collection(COLLECTION).findOne({ _id: courseObjectId });
       if (!course) return res.status(404).json({ message: "Presentation group not found." });
       const accessError = await presentationAccessError(db, course, req.user, true);
@@ -530,7 +500,7 @@ const assignPresentationTopic = async (req, res) => {
       const result = await db.collection(COLLECTION).updateOne(
         {
           _id: courseObjectId,
-          selectionVersion: course.selectionVersion || 0,
+          ...selectionVersionFilter(course),
           [`topics.${index}.locked`]: { $ne: true },
           [`topics.${index}.selections.id`]: { $ne: studentId },
           "topics.selections.id": { $ne: studentId },
@@ -581,7 +551,6 @@ const updatePresentationSettings = async (req, res) => {
     if (!ObjectId.isValid(id)) return res.status(400).json({ message: "Invalid presentation ID." });
     if (!Number.isInteger(maxStudentsPerTopic) || maxStudentsPerTopic < 1)
       return res.status(400).json({ message: "maxStudentsPerTopic must be an integer of at least 1." });
-    await migratePresentations(db);
     const course = await db.collection(COLLECTION).findOne({ _id: new ObjectId(id) });
     if (!course) return res.status(404).json({ message: "Presentation group not found." });
     const accessError = await presentationAccessError(db, course, req.user, true);
@@ -633,7 +602,6 @@ const setPresentationTopicLocked = async (req, res) => {
     if (!ObjectId.isValid(id)) return res.status(400).json({ message: "Invalid presentation ID." });
     if (!Number.isInteger(index) || index < 0) return res.status(400).json({ message: "Invalid topic index." });
 
-    await migratePresentations(db);
     const presentation = await db.collection(COLLECTION).findOne({
       _id: new ObjectId(id),
     });
@@ -664,7 +632,6 @@ const unassignPresentationTopic = async (req, res) => {
     if (!Number.isInteger(index) || index < 0) return res.status(400).json({ message: "Invalid topic index." });
     if (!studentId?.toString().trim()) return res.status(400).json({ message: "Student ID is required." });
 
-    await migratePresentations(db);
     const course = await db.collection(COLLECTION).findOne({ _id: new ObjectId(id) });
     if (!course) return res.status(404).json({ message: "Presentation group not found." });
     const accessError = await presentationAccessError(db, course, req.user, true);
@@ -698,7 +665,6 @@ const submitPresentation = async (req, res) => {
     if (!Number.isInteger(index) || index < 0) return res.status(400).json({ message: "Invalid topic index." });
     const studentId = req.user.email;
 
-    await migratePresentations(db);
     const presentation = await db.collection(COLLECTION).findOne({ _id: new ObjectId(id) });
     if (!presentation) return res.status(404).json({ message: "Presentation group not found." });
     const accessError = await presentationAccessError(db, presentation, req.user);

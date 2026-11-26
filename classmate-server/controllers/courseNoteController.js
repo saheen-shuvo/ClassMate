@@ -4,7 +4,9 @@ const { ObjectId } = require("mongodb");
 const { getDB } = require("../config/db");
 const { UPLOAD_DIRECTORY } = require("../middleware/courseNoteUpload");
 const {
+  canManageLegacyResource,
   canManageLinkedCourse,
+  canReadLegacyResource,
   canReadLinkedCourse,
   enrichCourseLabels,
   getLinkedCourse,
@@ -15,15 +17,18 @@ const {
 const COLLECTION = "courseNotes";
 const RELATIVE_UPLOAD_DIRECTORY = path.posix.join("uploads", "course-notes");
 
-const validateNoteDetails = (body = {}) => {
+const validateNoteDetails = (body = {}, requireCourse = true) => {
   const { title, description = "", courseId } = body;
+  const parsedCourseId = typeof courseId === "string" && ObjectId.isValid(courseId)
+    ? new ObjectId(courseId)
+    : null;
 
   if (
     typeof title !== "string" ||
     !title.trim() ||
     typeof description !== "string" ||
-    typeof courseId !== "string" ||
-    !ObjectId.isValid(courseId)
+    (requireCourse && !parsedCourseId) ||
+    (courseId && !parsedCourseId)
   ) {
     return null;
   }
@@ -31,20 +36,11 @@ const validateNoteDetails = (body = {}) => {
   return {
     title: title.trim(),
     description: description.trim(),
-    courseId: new ObjectId(courseId),
+    courseId: parsedCourseId,
   };
 };
 
-const accessFilter = (id, user) => {
-  const filter = { _id: new ObjectId(id) };
-
-  if (user.role === "cr") {
-    filter["uploadedBy._id"] = user._id;
-    filter["uploadedBy.role"] = "cr";
-  }
-
-  return filter;
-};
+const accessFilter = (id) => ({ _id: new ObjectId(id) });
 
 const serializedNote = (note) => {
   const id = String(note._id);
@@ -144,7 +140,11 @@ const fileDetails = (file) => ({
 const getCourseNotes = async (req, res) => {
   try {
     const db = getDB();
-    const filter = await resourceVisibilityFilter(db, req.user);
+    const filter = await resourceVisibilityFilter(db, req.user, {
+      collectionName: COLLECTION,
+      legacyLabelFields: ["course", "courseName"],
+      legacyOwnerField: "uploadedBy._id",
+    });
     const notes = await db
       .collection(COLLECTION)
       .find(filter)
@@ -228,7 +228,7 @@ const updateCourseNote = async (req, res) => {
     return res.status(400).json({ message: "Invalid course note ID." });
   }
 
-  const details = validateNoteDetails(req.body);
+  const details = validateNoteDetails(req.body, false);
   if (!details) {
     await removeUploadedFile(req.file);
     return res.status(400).json({
@@ -239,24 +239,56 @@ const updateCourseNote = async (req, res) => {
   let databaseUpdated = false;
   try {
     const db = getDB();
-    const filter = accessFilter(id, req.user);
+    const filter = accessFilter(id);
     const existing = await db.collection(COLLECTION).findOne(filter);
     if (!existing) {
       await removeUploadedFile(req.file);
       return res.status(404).json({ message: "Course note not found." });
     }
 
+    let courseUpdate = {};
+    let linkedCourseTitle;
     if (existing.courseId) {
       const currentCourse = await getLinkedCourse(db, existing.courseId);
       if (!canManageLinkedCourse(currentCourse, req.user)) {
         await removeUploadedFile(req.file);
         return res.status(403).json({ message: "You are not assigned to manage this note's course." });
       }
-    }
-    const resolved = await resolveCourseForResourceWrite(db, req.user, details.courseId);
-    if (resolved.error) {
-      await removeUploadedFile(req.file);
-      return res.status(resolved.error.status).json({ message: resolved.error.message });
+      const targetCourseId = details.courseId || existing.courseId;
+      if (req.user.role !== "admin" && String(existing.courseId) !== String(targetCourseId)) {
+        await removeUploadedFile(req.file);
+        return res.status(403).json({ message: "Only an administrator can move a note to another course." });
+      }
+
+      const resolved = await resolveCourseForResourceWrite(db, req.user, targetCourseId);
+      if (resolved.error) {
+        await removeUploadedFile(req.file);
+        return res.status(resolved.error.status).json({ message: resolved.error.message });
+      }
+      courseUpdate = {
+        courseId: resolved.course._id,
+        course: resolved.course.courseCode,
+      };
+      linkedCourseTitle = resolved.course.title;
+    } else {
+      const legacyAccess = await canManageLegacyResource(
+        db,
+        existing,
+        req.user,
+        ["course", "courseName"],
+      );
+      if (!legacyAccess.authorized) {
+        await removeUploadedFile(req.file);
+        return res.status(403).json({ message: "You are not authorized to manage this legacy note." });
+      }
+      if (
+        req.user.role !== "admin" &&
+        (!legacyAccess.course ||
+          String(legacyAccess.course._id) !== String(details.courseId || legacyAccess.course._id))
+      ) {
+        await removeUploadedFile(req.file);
+        return res.status(403).json({ message: "Only an administrator can move a note to another course." });
+      }
     }
 
     if (req.file && !(await hasPdfSignature(req.file.path))) {
@@ -267,8 +299,7 @@ const updateCourseNote = async (req, res) => {
     const updates = {
       title: details.title,
       description: details.description,
-      courseId: resolved.course._id,
-      course: resolved.course.courseCode,
+      ...courseUpdate,
       updatedAt: new Date(),
     };
     if (req.file) Object.assign(updates, fileDetails(req.file));
@@ -297,8 +328,8 @@ const updateCourseNote = async (req, res) => {
       message: "Course note updated successfully.",
       note: serializedNote({
         ...updatedNote,
-        courseCode: resolved.course.courseCode,
-        courseTitle: resolved.course.title,
+        courseCode: courseUpdate.course,
+        courseTitle: linkedCourseTitle,
       }),
       warning,
     });
@@ -317,7 +348,7 @@ const deleteCourseNote = async (req, res) => {
 
   try {
     const db = getDB();
-    const filter = accessFilter(id, req.user);
+    const filter = accessFilter(id);
     const note = await db.collection(COLLECTION).findOne(filter);
     if (!note) {
       return res.status(404).json({ message: "Course note not found." });
@@ -326,6 +357,16 @@ const deleteCourseNote = async (req, res) => {
       const course = await getLinkedCourse(db, note.courseId);
       if (!canManageLinkedCourse(course, req.user)) {
         return res.status(403).json({ message: "You are not assigned to manage this note's course." });
+      }
+    } else {
+      const legacyAccess = await canManageLegacyResource(
+        db,
+        note,
+        req.user,
+        ["course", "courseName"],
+      );
+      if (!legacyAccess.authorized) {
+        return res.status(403).json({ message: "You are not authorized to manage this legacy note." });
       }
     }
 
@@ -368,6 +409,17 @@ const serveCourseNoteFile = async (req, res) => {
       const course = await getLinkedCourse(db, note.courseId);
       if (!canReadLinkedCourse(course, req.user)) {
         return res.status(403).json({ message: "You are not enrolled in this course." });
+      }
+    } else {
+      const legacyAccess = await canReadLegacyResource(
+        db,
+        note,
+        req.user,
+        ["course", "courseName"],
+      );
+      const uploadedByUser = String(note.uploadedBy?._id) === String(req.user._id);
+      if (!legacyAccess.authorized && !uploadedByUser) {
+        return res.status(403).json({ message: "You do not have access to this course note." });
       }
     }
 

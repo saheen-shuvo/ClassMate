@@ -2,6 +2,7 @@
 const { getDB } = require("../config/db");
 const { ObjectId } = require("mongodb");
 const {
+  canManageLegacyResource,
   canManageLinkedCourse,
   enrichCourseLabels,
   getLinkedCourse,
@@ -14,7 +15,10 @@ const COLLECTION = "assignments";
 const getAssignments = async (req, res) => {
   try {
     const db = getDB();
-    const filter = await resourceVisibilityFilter(db, req.user);
+    const filter = await resourceVisibilityFilter(db, req.user, {
+      collectionName: COLLECTION,
+      legacyLabelFields: ["course", "courseName"],
+    });
     const assignments = await db
       .collection(COLLECTION)
       .find(filter)
@@ -128,23 +132,55 @@ const updateAssignment = async (req, res) => {
     const existing = await db.collection(COLLECTION).findOne({ _id });
     if (!existing) return res.status(404).json({ message: "Assignment not found." });
 
+    let courseUpdate = {};
     if (existing.courseId) {
       const currentCourse = await getLinkedCourse(db, existing.courseId);
+      const targetCourseId = courseId || existing.courseId;
       if (!canManageLinkedCourse(currentCourse, req.user)) {
         return res.status(403).json({ message: "You are not assigned to manage this assignment's course." });
       }
+      if (req.user.role !== "admin" && String(existing.courseId) !== String(targetCourseId)) {
+        return res.status(403).json({ message: "Only an administrator can move an assignment to another course." });
+      }
+    } else {
+      const legacyAccess = await canManageLegacyResource(
+        db,
+        existing,
+        req.user,
+        ["course", "courseName"],
+      );
+      if (!legacyAccess.authorized) {
+        return res.status(403).json({ message: "You are not authorized to manage this legacy assignment." });
+      }
+      const targetCourseId = courseId || legacyAccess.course?._id;
+      if (
+        req.user.role !== "admin" &&
+        (!legacyAccess.course || String(legacyAccess.course._id) !== String(targetCourseId))
+      ) {
+        return res.status(403).json({ message: "Only an administrator can move an assignment to another course." });
+      }
     }
-    const resolved = await resolveCourseForResourceWrite(db, req.user, courseId);
-    if (resolved.error) {
-      return res.status(resolved.error.status).json({ message: resolved.error.message });
+
+    if (existing.courseId) {
+      const resolved = await resolveCourseForResourceWrite(
+        db,
+        req.user,
+        courseId || existing.courseId,
+      );
+      if (resolved.error) {
+        return res.status(resolved.error.status).json({ message: resolved.error.message });
+      }
+      courseUpdate = {
+        courseId: resolved.course._id,
+        course: resolved.course.courseCode,
+      };
     }
 
     const updatedData = {
       title: title.trim(),
       description: description.trim(),
       instructions: (instructions || "").trim(),
-      courseId: resolved.course._id,
-      course: resolved.course.courseCode,
+      ...courseUpdate,
       dueDate: parsedDueDate,
       totalMarks: parsedMarks,
       updatedAt: new Date(),
@@ -189,6 +225,16 @@ const deleteAssignment = async (req, res) => {
       const course = await getLinkedCourse(db, existing.courseId);
       if (!canManageLinkedCourse(course, req.user)) {
         return res.status(403).json({ message: "You are not assigned to manage this assignment's course." });
+      }
+    } else {
+      const legacyAccess = await canManageLegacyResource(
+        db,
+        existing,
+        req.user,
+        ["course", "courseName"],
+      );
+      if (!legacyAccess.authorized) {
+        return res.status(403).json({ message: "You are not authorized to manage this legacy assignment." });
       }
     }
     const result = await db.collection(COLLECTION).deleteOne({
